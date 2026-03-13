@@ -88,10 +88,15 @@ async function main() {
     const boundDispatcher = (verb: string, params: Record<string, unknown>) =>
       dispatcher(verb, params, client, config);
 
+    const { mountMcpHttp } = await import("./transport/mcp-http-transport.js");
+
     const app = createHttpApp(boundDispatcher, config);
 
     // §8.3 A2A Agent Card
     serveA2ARoute(app, config);
+
+    // MCP Streamable HTTP at /mcp (same Express app, same port)
+    mountMcpHttp(app, dispatcher, client, config);
 
     const baseUrl = config.publicUrl ?? `http://localhost:${config.port}`;
     const server = app.listen(config.port, () => {
@@ -100,6 +105,7 @@ async function main() {
       );
       console.error(`[abel-cap] Capability Card: ${baseUrl}/.well-known/cap.json`);
       console.error(`[abel-cap] A2A Agent Card: ${baseUrl}/.well-known/agent-card.json`);
+      console.error(`[abel-cap] MCP Streamable HTTP: ${baseUrl}/mcp`);
     });
 
     // Graceful shutdown — drain in-flight requests on SIGTERM

@@ -63,3 +63,5 @@ make test-conformance  # CAP conformance suite
 - src/cap/envelope.ts — Request/Response envelope construction
 - src/cap/errors.ts — All CAP error codes
 - src/config.ts — Environment variable parsing
+- src/transport/mcp-http-transport.ts — MCP Streamable HTTP at /mcp (stateful, per-session)
+- src/transport/mcp-binding.ts — MCP tool registration (shared by stdio + HTTP transports)
