@@ -4,6 +4,12 @@
   "description": "Abel AI reference implementation of the Causal Agent Protocol (CAP) v0.2.2",
   "type": "module",
   "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./cap": "./dist/cap/index.js",
+    "./cap/*": "./dist/cap/*.js",
+    "./errors": "./dist/cap/errors.js"
+  },
   "bin": {
     "cap-server": "./dist/index.js"
   },
