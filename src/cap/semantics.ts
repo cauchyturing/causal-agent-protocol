@@ -34,6 +34,10 @@ export const CANONICAL_ASSUMPTIONS = [
   "no_instantaneous_effects",
   "granger_predictive_causality_only",
   "no_latent_confounders_addressed",
+  "homogeneity",
+  "positivity",
+  "consistency",
+  "no_interference",
   "mechanism_invariance_under_intervention",
 ] as const;
 

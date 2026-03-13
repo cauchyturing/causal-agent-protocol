@@ -28,6 +28,7 @@ The bridge translates MCP tool calls to `POST /v1/{category}/{name}` with CAP re
 
 ```bash
 npm install
+npm run build
 
 # Configure
 export CAP_ENDPOINT=https://your-cap-server.com  # Python CAP server URL
@@ -56,7 +57,9 @@ src/
 │   ├── capability-card.ts          # Machine-readable self-description
 │   ├── envelope.ts                 # Request/Response envelope construction
 │   ├── errors.ts                   # All CAP error codes
-│   └── provenance.ts               # Provenance metadata builder
+│   ├── provenance.ts               # Provenance metadata builder
+│   ├── semantics.ts                # Reasoning modes, identification status, assumptions
+│   └── verbs.ts                    # VERB_REGISTRY — protocol truth for all 22 verbs
 ├── transport/      # Transport bindings
 │   ├── mcp-binding.ts              # 20 MCP tools ↔ CAP verbs (all L1+L2)
 │   ├── mcp-http-transport.ts       # MCP Streamable HTTP at /mcp
@@ -365,11 +368,13 @@ def error_response(request_id: str, verb: str, code: str, http_status: int, mess
 | `node_not_found` | 404 | Ticker not in graph / 节点不在图中 |
 | `verb_not_supported` | 501 | Verb not implemented / verb未实现 |
 | `insufficient_tier` | 403 | Access tier too low / 访问层级太低 |
+| `graph_stale` | 503 | Graph not updated within expected frequency / 图未按预期频率更新 |
 | `computation_timeout` | 504 | Computation exceeded timeout / 计算超时 |
 | `invalid_intervention` | 422 | Bad intervention params / 干预参数无效 |
 | `path_not_found` | 404 | No causal path between nodes / 节点间无因果路径 |
 | `rate_limited` | 429 | Rate limit exceeded / 超过速率限制 |
 | `subgraph_too_large` | 413 | Subgraph > 50 edges / 子图超过50条边 |
+| `query_type_not_supported` | 400 | Server can't perform requested query_type / 服务器不支持请求的query_type |
 | `insufficient_mechanism_coverage` | 422 | Can't do scm_simulation / 无法执行scm_simulation |
 
 #### Step 6: Recommended Build Order / 第6步：推荐构建顺序
@@ -423,7 +428,9 @@ Phase 5 — Remaining meta
 uvicorn cap_server:app --port 8082
 
 # 2. Start the bridge pointing to your server / 启动bridge指向你的服务器
-CAP_ENDPOINT=http://localhost:8082/v1 CAP_PORT=3001 npm start
+#    Note: CAP_ENDPOINT is the base URL — the bridge appends /v1/{category}/{name}
+#    注意：CAP_ENDPOINT是基础URL — bridge会追加 /v1/{category}/{name}
+CAP_ENDPOINT=http://localhost:8082 CAP_PORT=3001 npm start
 
 # 3. Test: capability card / 测试：能力卡
 curl http://localhost:3001/.well-known/cap.json | jq .

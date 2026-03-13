@@ -17,8 +17,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@cap": path.resolve(__dirname, "src/cap"),
-      "@verbs": path.resolve(__dirname, "src/verbs"),
-      "@abel-client": path.resolve(__dirname, "src/abel-client"),
       "@utils": path.resolve(__dirname, "src/utils"),
     },
   },

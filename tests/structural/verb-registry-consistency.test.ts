@@ -7,8 +7,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { VERB_REGISTRY } from "../../src/cap/verbs.js";
+import { VERB_REGISTRY, getVerbsForLevel, verbRequiresL2Semantics } from "../../src/cap/verbs.js";
 import { getToolDefinitions, TOOL_NAME_TO_VERB } from "../../src/transport/mcp-binding.js";
+import { buildCapabilityCard } from "../../src/cap/capability-card.js";
+import { checkVerbAccess } from "../../src/security/tiers.js";
 
 describe("VERB_REGISTRY ↔ TOOL_DEFINITIONS consistency", () => {
   const tools = getToolDefinitions();
@@ -103,5 +105,85 @@ describe("Capability Card ↔ MCP binding coherence", () => {
     for (const tool of l2ConvenienceTools) {
       expect(VERB_REGISTRY[tool.verb]?.tier).toBe("convenience");
     }
+  });
+
+  it("capability card supported_verbs matches VERB_REGISTRY L1+L2 verbs", () => {
+    const card = buildCapabilityCard("https://test.example.com");
+    const cardCore = card.supported_verbs.core as string[];
+    const cardConv = card.supported_verbs.convenience as string[];
+    const allCardVerbs = [...cardCore, ...cardConv].sort();
+
+    const registryL1L2 = Object.values(VERB_REGISTRY)
+      .filter((v) => v.minLevel <= 2)
+      .map((v) => v.name)
+      .sort();
+
+    expect(allCardVerbs).toEqual(registryL1L2);
+  });
+});
+
+describe("Tier verbs ↔ Capability Card access_tiers sync", () => {
+  it("every L1+L2 verb allowed by capability card tiers is also allowed by tiers.ts", () => {
+    const card = buildCapabilityCard("https://test.example.com");
+    const l1l2Verbs = Object.values(VERB_REGISTRY)
+      .filter((v) => v.minLevel <= 2)
+      .map((v) => v.name);
+
+    for (const tierDef of card.access_tiers) {
+      const tier = tierDef.tier as "public" | "standard" | "enterprise";
+      for (const verb of l1l2Verbs) {
+        // Check if the card's tier patterns would allow this verb
+        const cardAllows = (tierDef.verbs as string[]).some((pattern) => {
+          if (pattern === "*") return true;
+          if (pattern.endsWith(".*")) return verb.startsWith(pattern.slice(0, -2) + ".");
+          return verb === pattern;
+        });
+        if (cardAllows) {
+          expect(
+            checkVerbAccess(verb, tier),
+            `Card allows '${verb}' at '${tier}' tier but tiers.ts rejects it`
+          ).toBe(true);
+        }
+      }
+    }
+  });
+});
+
+describe("Verb utility functions", () => {
+  it("getVerbsForLevel(1) returns only L1 verbs", () => {
+    const l1Verbs = getVerbsForLevel(1);
+    for (const v of l1Verbs) {
+      expect(v.minLevel).toBe(1);
+    }
+    expect(l1Verbs.length).toBeGreaterThan(0);
+  });
+
+  it("getVerbsForLevel(2) returns all L1+L2 verbs", () => {
+    const l2Verbs = getVerbsForLevel(2);
+    for (const v of l2Verbs) {
+      expect(v.minLevel).toBeLessThanOrEqual(2);
+    }
+    // Should include both L1 and L2 verbs
+    const l1Count = l2Verbs.filter((v) => v.minLevel === 1).length;
+    const l2Count = l2Verbs.filter((v) => v.minLevel === 2).length;
+    expect(l1Count).toBeGreaterThan(0);
+    expect(l2Count).toBeGreaterThan(0);
+    expect(l2Verbs.length).toBe(l1Count + l2Count);
+  });
+
+  it("verbRequiresL2Semantics returns true for intervene.* verbs", () => {
+    expect(verbRequiresL2Semantics("intervene.do")).toBe(true);
+    expect(verbRequiresL2Semantics("intervene.ate")).toBe(true);
+    expect(verbRequiresL2Semantics("intervene.sensitivity")).toBe(true);
+  });
+
+  it("verbRequiresL2Semantics returns false for observe/traverse/meta verbs", () => {
+    expect(verbRequiresL2Semantics("observe.predict")).toBe(false);
+    expect(verbRequiresL2Semantics("traverse.parents")).toBe(false);
+    expect(verbRequiresL2Semantics("meta.health")).toBe(false);
+  });
+
+  it("verbRequiresL2Semantics returns false for unknown verbs", () => {
+    expect(verbRequiresL2Semantics("nonexistent.verb")).toBe(false);
   });
 });
