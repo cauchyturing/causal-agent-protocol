@@ -66,10 +66,7 @@ export function transformFeatureToNeighbor(f: AbelFeature) {
 
 /** Compute impact fractions for a list of causal features */
 export function computeImpactFractions(features: CausalFeature[]): void {
-  const totalImpact = features.reduce(
-    (sum, f) => sum + Math.abs(f.impact),
-    0
-  );
+  const totalImpact = features.reduce((sum, f) => sum + Math.abs(f.impact), 0);
   if (totalImpact === 0) return;
   for (const f of features) {
     f.impact_fraction = Math.abs(f.impact) / totalImpact;

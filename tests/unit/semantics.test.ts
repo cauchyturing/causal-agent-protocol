@@ -25,16 +25,12 @@ describe("l2-semantics", () => {
 
   describe("ABEL_RESULT_SEMANTICS", () => {
     it("always declares not_formally_identified", () => {
-      expect(ABEL_RESULT_SEMANTICS.identification_status).toBe(
-        "not_formally_identified"
-      );
+      expect(ABEL_RESULT_SEMANTICS.identification_status).toBe("not_formally_identified");
     });
 
     it("includes all required assumptions", () => {
       expect(ABEL_RESULT_SEMANTICS.assumptions).toEqual(ABEL_ASSUMPTIONS);
-      expect(ABEL_RESULT_SEMANTICS.assumptions).toContain(
-        "causal_sufficiency"
-      );
+      expect(ABEL_RESULT_SEMANTICS.assumptions).toContain("causal_sufficiency");
       expect(ABEL_RESULT_SEMANTICS.assumptions).toContain(
         "mechanism_invariance_under_intervention"
       );
@@ -75,9 +71,9 @@ describe("l2-semantics", () => {
     });
 
     it("throws when identification_status missing", () => {
-      expect(() =>
-        assertResultSemanticsPresent({ assumptions: [] })
-      ).toThrow("identification_status");
+      expect(() => assertResultSemanticsPresent({ assumptions: [] })).toThrow(
+        "identification_status"
+      );
     });
 
     it("throws when assumptions missing", () => {
@@ -91,27 +87,21 @@ describe("l2-semantics", () => {
 
   describe("validateReasoningModeClaim", () => {
     it("passes: scm_simulation with full coverage", () => {
-      expect(() =>
-        validateReasoningModeClaim("scm_simulation", true)
-      ).not.toThrow();
+      expect(() => validateReasoningModeClaim("scm_simulation", true)).not.toThrow();
     });
 
     it("passes: graph_propagation with partial coverage", () => {
-      expect(() =>
-        validateReasoningModeClaim("graph_propagation", false)
-      ).not.toThrow();
+      expect(() => validateReasoningModeClaim("graph_propagation", false)).not.toThrow();
     });
 
     it("passes: graph_propagation with full coverage (conservative ok)", () => {
-      expect(() =>
-        validateReasoningModeClaim("graph_propagation", true)
-      ).not.toThrow();
+      expect(() => validateReasoningModeClaim("graph_propagation", true)).not.toThrow();
     });
 
     it("FAILS: scm_simulation without full coverage (Partial Coverage Rule)", () => {
-      expect(() =>
-        validateReasoningModeClaim("scm_simulation", false)
-      ).toThrow("Partial Coverage Rule");
+      expect(() => validateReasoningModeClaim("scm_simulation", false)).toThrow(
+        "Partial Coverage Rule"
+      );
     });
   });
 });

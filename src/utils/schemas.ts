@@ -4,12 +4,7 @@
 
 import { z } from "zod";
 
-export const UnitSchema = z.enum([
-  "log_return",
-  "percentage",
-  "absolute",
-  "std_dev",
-]);
+export const UnitSchema = z.enum(["log_return", "percentage", "absolute", "std_dev"]);
 
 export type Unit = z.infer<typeof UnitSchema>;
 

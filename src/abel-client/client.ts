@@ -82,20 +82,12 @@ export class AbelClient {
     return this.get(`/causal_graph/${encodeURIComponent(ticker)}/prediction`);
   }
 
-  async getMultiStepPrediction(
-    ticker: string
-  ): Promise<AbelMultiStepPredictionResponse> {
-    return this.get(
-      `/causal_graph/${encodeURIComponent(ticker)}/multi-step-prediction`
-    );
+  async getMultiStepPrediction(ticker: string): Promise<AbelMultiStepPredictionResponse> {
+    return this.get(`/causal_graph/${encodeURIComponent(ticker)}/multi-step-prediction`);
   }
 
-  async getBatchPrediction(
-    tickers: string[]
-  ): Promise<AbelBatchPredictionResponse> {
-    const params = tickers
-      .map((t) => `tickers=${encodeURIComponent(t)}`)
-      .join("&");
+  async getBatchPrediction(tickers: string[]): Promise<AbelBatchPredictionResponse> {
+    const params = tickers.map((t) => `tickers=${encodeURIComponent(t)}`).join("&");
     return this.get(`/causal_graph/multi-step-prediction/batch?${params}`);
   }
 
@@ -105,9 +97,7 @@ export class AbelClient {
 
   // ── Intervention (L2) ─────────────────────────────────
 
-  async intervene(
-    request: AbelInterveneRequest
-  ): Promise<AbelInterveneResponse> {
+  async intervene(request: AbelInterveneRequest): Promise<AbelInterveneResponse> {
     return this.post("/causal_graph/intervene", request);
   }
 

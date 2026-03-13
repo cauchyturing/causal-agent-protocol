@@ -38,9 +38,7 @@ export const ABEL_ASSUMPTIONS: readonly CausalAssumption[] = [
  * Determine per-effect semantics based on mechanism coverage.
  * This is the Partial Coverage Rule (CAP v0.2.2 §6.6).
  */
-export function getEffectSemantics(
-  allPathNodesCovered: boolean
-): PerEffectSemantics {
+export function getEffectSemantics(allPathNodesCovered: boolean): PerEffectSemantics {
   if (allPathNodesCovered) {
     return {
       reasoning_mode: "scm_simulation",
@@ -63,9 +61,7 @@ export const ABEL_RESULT_SEMANTICS: ResultSemantics = {
  * Conformance guard: throws if an effect is missing required fields.
  * Call this in tests and optionally at runtime for defense-in-depth.
  */
-export function assertEffectSemanticsPresent(
-  effect: Record<string, unknown>
-): void {
+export function assertEffectSemanticsPresent(effect: Record<string, unknown>): void {
   if (!effect["reasoning_mode"]) {
     throw new Error(
       "CAP CONFORMANCE VIOLATION: intervene.do effect missing reasoning_mode. " +
@@ -82,18 +78,14 @@ export function assertEffectSemanticsPresent(
 /**
  * Conformance guard: throws if a result is missing required L2 fields.
  */
-export function assertResultSemanticsPresent(
-  result: Record<string, unknown>
-): void {
+export function assertResultSemanticsPresent(result: Record<string, unknown>): void {
   if (!result["identification_status"]) {
     throw new Error(
       "CAP CONFORMANCE VIOLATION: L2 result missing identification_status."
     );
   }
   if (!result["assumptions"] || !Array.isArray(result["assumptions"])) {
-    throw new Error(
-      "CAP CONFORMANCE VIOLATION: L2 result missing assumptions array."
-    );
+    throw new Error("CAP CONFORMANCE VIOLATION: L2 result missing assumptions array.");
   }
 }
 

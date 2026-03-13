@@ -45,10 +45,7 @@ function getFilesRecursive(dir: string): string[] {
   return files;
 }
 
-function resolveRelativeImport(
-  fromFile: string,
-  importPath: string
-): string | null {
+function resolveRelativeImport(fromFile: string, importPath: string): string | null {
   if (!importPath.startsWith(".")) return null; // external dep
   const resolved = path.resolve(path.dirname(fromFile), importPath);
   // Get path relative to SRC_ROOT
@@ -126,9 +123,7 @@ describe("Layer Boundaries", () => {
 
   it("no file imports from transport/ except index.ts", () => {
     const allFiles = getFilesRecursive(SRC_ROOT).filter(
-      (f) =>
-        !f.includes("/transport/") &&
-        !f.endsWith("index.ts")
+      (f) => !f.includes("/transport/") && !f.endsWith("index.ts")
     );
     for (const file of allFiles) {
       const imports = getImports(file);

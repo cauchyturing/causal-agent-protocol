@@ -55,11 +55,10 @@ describe("envelope", () => {
 
   describe("buildSuccessResponse", () => {
     it("constructs valid success envelope", () => {
-      const resp = buildSuccessResponse(
-        "req-123",
-        "observe.predict",
-        { target: "BTC", prediction: { value: 0.02 } }
-      );
+      const resp = buildSuccessResponse("req-123", "observe.predict", {
+        target: "BTC",
+        prediction: { value: 0.02 },
+      });
       expect(resp.cap_version).toBe(CAP_VERSION);
       expect(resp.status).toBe("success");
       expect(resp.request_id).toBe("req-123");

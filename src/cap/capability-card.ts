@@ -17,8 +17,7 @@ export function buildCapabilityCard(endpoint: string) {
     .map((v) => v.name);
 
   return {
-    $schema:
-      "https://causalagentprotocol.org/schema/capability-card/v0.2.2.json",
+    $schema: "https://causalagentprotocol.org/schema/capability-card/v0.2.2.json",
 
     // ── Identity ──
     name: "Abel Social Physical Engine",
