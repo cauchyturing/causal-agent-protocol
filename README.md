@@ -234,9 +234,10 @@ Your server MUST return a **CAP Response Envelope** (§7.2):
 }
 ```
 
-#### Step 2: Implement the 3 Required Endpoints First / 第2步：先实现3个必需端点
+#### Step 2: Implement the Minimal L1 Endpoints / 第2步：实现最小L1端点
 
-A minimal L1 server needs only these (§10.1 / 最小L1服务器只需要这些)：
+A minimal L1 server needs these 4 endpoints — 1 static + 3 core verbs (§10.1):
+最小L1服务器需要这4个端点 — 1个静态 + 3个核心verb (§10.1)：
 
 ```
 GET  /.well-known/cap.json          → Capability Card (static JSON)
@@ -295,8 +296,8 @@ See [`docs/ABEL-MAPPING.md`](docs/ABEL-MAPPING.md) for the complete mapping tabl
 | Primitive / 原语 | CAP Verbs it serves / 服务的CAP verb |
 |-----------|-------------------|
 | `predict(ticker)` | observe.predict, observe.predict_multistep, observe.predict_batch, effect.query(obs) |
-| `explain(ticker)` | observe.attribute, graph.neighbors, traverse.parents, traverse.children, graph.paths, traverse.path, traverse.subgraph |
-| `intervene(do_values, targets)` | intervene.do, intervene.ate, effect.query(int) |
+| `explain(ticker)` | observe.attribute, graph.neighbors, traverse.parents, traverse.children, traverse.latest_values, graph.paths, traverse.path, traverse.subgraph |
+| `intervene(do_values, targets)` | intervene.do, intervene.ate, intervene.sensitivity, effect.query(int) |
 | `counterfactual(...)` | counterfact.query (L3 reserved / L3预留) |
 | `validate(graph)` | No direct CAP verb — internal QA / 无直接CAP verb — 内部质量保证 |
 | `meta(...)` | meta.capabilities, meta.graph_info, meta.node_info, meta.algorithms, meta.health |
@@ -333,12 +334,14 @@ See [`docs/ABEL-MAPPING.md`](docs/ABEL-MAPPING.md) for the complete mapping tabl
 **Partial Coverage Rule (§6.6) / 部分覆盖规则:** If any node in the causal path lacks a fitted mechanism, you MUST NOT return `reasoning_mode: "scm_simulation"` for that effect. Either return `graph_propagation` or error `insufficient_mechanism_coverage`.
 如果因果路径上任何节点缺少拟合机制，**不得** 对该效应返回 `reasoning_mode: "scm_simulation"`。要么返回 `graph_propagation`，要么报错 `insufficient_mechanism_coverage`。
 
-**reasoning_mode values / reasoning_mode取值 (§5.1):**
+**reasoning_mode values / reasoning_mode取值 (§5.1 defines 6; these 3 are relevant for PCMCI engines / §5.1定义了6个值，以下3个与PCMCI引擎相关):**
 | Value | When to use / 使用场景 |
 |-------|----------|
 | `scm_simulation` | All path nodes have executable mechanisms / 路径上所有节点都有可执行机制 |
 | `graph_propagation` | Fallback when coverage incomplete / 覆盖不完整时的降级 |
 | `identified_causal_effect` | Formally identified (rare for PCMCI) / 形式化识别（PCMCI中罕见）|
+
+Others (for non-PCMCI engines / 其他引擎使用): `statistical_estimation`, `bounds_only`, `expert_elicitation`
 
 #### Step 5: Handle Error Codes / 第5步：处理错误码
 
@@ -460,7 +463,7 @@ The `src/cap/` directory defines the protocol schemas. You can port the key part
 | TS file / TS文件 | Port to Python / 移植到Python | What you get / 你得到什么 |
 |---------|---------------|------------|
 | `envelope.ts` | `cap/envelope.py` | Request/Response envelope validation (Pydantic) / 请求/响应信封验证 |
-| `errors.ts` | `cap/errors.py` | All 10 CAP error codes + HTTP status mapping / 全部10个CAP错误码+HTTP状态映射 |
+| `errors.ts` | `cap/errors.py` | All 11 CAP error codes (§7.3) + HTTP status mapping / 全部11个CAP错误码(§7.3)+HTTP状态映射 |
 | `verbs.ts` | `cap/verbs.py` | VERB_REGISTRY — verb metadata, tier, level / verb元数据、层级 |
 | `capability-card.ts` | `cap/card.py` | Capability Card builder / 能力卡构建器 |
 

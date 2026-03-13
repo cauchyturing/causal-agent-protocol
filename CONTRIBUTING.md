@@ -3,7 +3,7 @@
 ## Setup
 
 ```bash
-git clone <repo-url> && cd abel-cap-ref
+git clone <repo-url> && cd causal-agent-protocol
 npm install
 cp .env.example .env  # edit CAP_ENDPOINT to point to your Python CAP server
 ```

@@ -1,5 +1,5 @@
 {
-  "name": "@abel-ai/cap-bridge",
+  "name": "causal-agent-protocol",
   "version": "0.1.0",
   "description": "CAP v0.2.2 protocol spec + MCP bridge for the Causal Agent Protocol",
   "type": "module",
