@@ -1,0 +1,25 @@
+import { defineConfig } from "vitest/config";
+import path from "path";
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: "node",
+    include: ["tests/**/*.test.ts"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "lcov"],
+      include: ["src/**/*.ts"],
+      exclude: ["src/index.ts"],
+      thresholds: { statements: 20 },
+    },
+  },
+  resolve: {
+    alias: {
+      "@cap": path.resolve(__dirname, "src/cap"),
+      "@verbs": path.resolve(__dirname, "src/verbs"),
+      "@abel-client": path.resolve(__dirname, "src/abel-client"),
+      "@utils": path.resolve(__dirname, "src/utils"),
+    },
+  },
+});
