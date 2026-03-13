@@ -19,7 +19,13 @@ export function mapAbelError(err: unknown): never {
       suggestion: "Check the node_id exists in the causal graph via meta.graph_info",
     });
   }
-  if (status === 408 || message.includes("timeout")) {
+  // AbortSignal timeout (DOMException: "The operation was aborted")
+  if (err instanceof DOMException && err.name === "AbortError") {
+    throw new CAPError("computation_timeout", {
+      suggestion: "Abel API request timed out. Try a simpler query.",
+    });
+  }
+  if (status === 408 || message.includes("timeout") || message.includes("aborted")) {
     throw new CAPError("computation_timeout", {
       suggestion: "Try a simpler query or increase timeout_ms",
     });

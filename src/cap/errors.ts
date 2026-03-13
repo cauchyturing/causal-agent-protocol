@@ -45,6 +45,10 @@ export const CAP_ERROR_CODES = {
     message:
       "Target nodes require causal path nodes that lack executable structural mechanisms",
   },
+  internal_error: {
+    http: 500,
+    message: "An unexpected internal server error occurred",
+  },
 } as const;
 
 export type CAPErrorCode = keyof typeof CAP_ERROR_CODES;

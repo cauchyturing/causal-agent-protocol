@@ -190,16 +190,16 @@ describe("§5.1 claim-to-card binding", () => {
   );
 });
 
-// ── §6.4 effect.query L1 fallback ────────────────────────────────────────────
+// ── §6.4 effect.query interventional validation ──────────────────────────────
 
-describe("§6.4 effect.query L1 fallback", () => {
-  it("MUST reject interventional queries with query_type_not_supported", async () => {
-    // CAPError sets .message to a human-readable string, NOT the error code.
-    // Use .toSatisfy() to check .code directly.
+describe("§6.4 effect.query interventional validation", () => {
+  it("MUST reject interventional query missing intervention param with invalid_intervention", async () => {
+    // Now that interventional is supported at L2, missing intervention.node_id
+    // returns invalid_intervention (not query_type_not_supported).
     await expect(
       dispatch("effect.query", { target: "BTC", query_type: "interventional" }, mockClient, mockConfig)
     ).rejects.toSatisfy(
-      (err: unknown) => err instanceof CAPError && err.code === "query_type_not_supported"
+      (err: unknown) => err instanceof CAPError && err.code === "invalid_intervention"
     );
   });
 });

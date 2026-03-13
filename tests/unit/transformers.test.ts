@@ -3,8 +3,9 @@ import {
   transformFeatureToCausal,
   transformChildToNeighbor,
   computeImpactFractions,
+  transformInterveneEffect,
 } from "../../src/abel-client/transformers.js";
-import type { AbelFeature, AbelChild } from "../../src/abel-client/types.js";
+import type { AbelFeature, AbelChild, AbelInterveneEffect } from "../../src/abel-client/types.js";
 
 describe("transformers", () => {
   describe("transformFeatureToCausal", () => {
@@ -74,6 +75,112 @@ describe("transformers", () => {
       ];
       computeImpactFractions(features);
       expect(features[0]!.impact_fraction).toBe(0);
+    });
+  });
+
+  describe("transformInterveneEffect", () => {
+    it("converts propagation_delay_hours to ISO 8601 duration", () => {
+      const effect: AbelInterveneEffect = {
+        target: "ETH",
+        expected_change: 0.05,
+        unit: "log_return",
+        probability_positive: 0.72,
+        propagation_delay_hours: 2,
+        mechanism_coverage_complete: true,
+      };
+      const result = transformInterveneEffect(effect);
+      expect(result.propagation_delay).toBe("PT2H");
+      expect((result as Record<string, unknown>).propagation_delay_hours).toBeUndefined();
+    });
+
+    it("adds interval_method bootstrap when confidence_interval is present", () => {
+      const effect: AbelInterveneEffect = {
+        target: "BTC",
+        expected_change: 0.03,
+        unit: "log_return",
+        confidence_interval: [-0.01, 0.07],
+        probability_positive: 0.65,
+        propagation_delay_hours: 1,
+        mechanism_coverage_complete: false,
+      };
+      const result = transformInterveneEffect(effect);
+      expect(result.confidence_interval).toEqual([-0.01, 0.07]);
+      expect(result.interval_method).toBe("bootstrap");
+    });
+
+    it("omits interval_method when no confidence_interval", () => {
+      const effect: AbelInterveneEffect = {
+        target: "SOL",
+        expected_change: 0.02,
+        unit: "log_return",
+        probability_positive: 0.55,
+        propagation_delay_hours: 3,
+        mechanism_coverage_complete: true,
+      };
+      const result = transformInterveneEffect(effect);
+      expect(result.interval_method).toBeUndefined();
+    });
+
+    it("adds edge_type directed_lagged to each causal_path edge", () => {
+      const effect: AbelInterveneEffect = {
+        target: "ETH",
+        expected_change: 0.04,
+        unit: "log_return",
+        probability_positive: 0.68,
+        propagation_delay_hours: 4,
+        mechanism_coverage_complete: true,
+        causal_path: [
+          { from: "BTC", to: "ETH", weight: 0.6, tau: 2 },
+          { from: "ETH", to: "SOL", weight: 0.3, tau: 1 },
+        ],
+      };
+      const result = transformInterveneEffect(effect);
+      expect(result.causal_path).toHaveLength(2);
+      expect(result.causal_path![0]!.edge_type).toBe("directed_lagged");
+      expect(result.causal_path![1]!.edge_type).toBe("directed_lagged");
+    });
+
+    it("omits causal_path when not provided", () => {
+      const effect: AbelInterveneEffect = {
+        target: "ETH",
+        expected_change: 0.01,
+        unit: "log_return",
+        probability_positive: 0.6,
+        propagation_delay_hours: 1,
+        mechanism_coverage_complete: false,
+      };
+      const result = transformInterveneEffect(effect);
+      expect(result.causal_path).toBeUndefined();
+    });
+
+    it("preserves all passthrough fields unchanged", () => {
+      const effect: AbelInterveneEffect = {
+        target: "LINK",
+        expected_change: -0.02,
+        unit: "percent",
+        probability_positive: 0.4,
+        propagation_delay_hours: 6,
+        mechanism_coverage_complete: false,
+      };
+      const result = transformInterveneEffect(effect);
+      expect(result.target).toBe("LINK");
+      expect(result.expected_change).toBe(-0.02);
+      expect(result.unit).toBe("percent");
+      expect(result.probability_positive).toBe(0.4);
+      expect(result.mechanism_coverage_complete).toBe(false);
+    });
+
+    it("handles zero propagation delay", () => {
+      const effect: AbelInterveneEffect = {
+        target: "ETH",
+        expected_change: 0.0,
+        unit: "log_return",
+        probability_positive: 0.5,
+        propagation_delay_hours: 0,
+        mechanism_coverage_complete: true,
+      };
+      const result = transformInterveneEffect(effect);
+      expect(result.propagation_delay).toBe("PT0H");
     });
   });
 });

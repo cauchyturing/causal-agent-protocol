@@ -5,8 +5,9 @@ const LogLevelSchema = z.enum(["debug", "info", "warn", "error"]);
 
 const ConfigSchema = z.object({
   abelApiBase: z.string().url(),
-  abelApiKey: z.string().default(""),
+  abelApiKey: z.string().optional(),
   accessTier: AccessTierSchema.default("standard"),
+  publicUrl: z.string().url().optional(),
   port: z.coerce.number().int().min(1).max(65535).default(3001),
   logLevel: LogLevelSchema.default("info"),
   rateLimitPublic: z.coerce.number().int().default(100),
@@ -29,8 +30,9 @@ export type AccessTier = z.infer<typeof AccessTierSchema>;
 export function loadConfig(): Config {
   return ConfigSchema.parse({
     abelApiBase: process.env["ABEL_API_BASE"],
-    abelApiKey: process.env["ABEL_API_KEY"],
+    abelApiKey: process.env["ABEL_API_KEY"] || undefined,
     accessTier: process.env["CAP_ACCESS_TIER"],
+    publicUrl: process.env["CAP_PUBLIC_URL"] || undefined,
     port: process.env["CAP_PORT"],
     logLevel: process.env["CAP_LOG_LEVEL"],
     rateLimitPublic: process.env["CAP_RATE_LIMIT_PUBLIC"],

@@ -2,7 +2,7 @@
  * Abel CAP Server — Entrypoint
  *
  * Dual transport: --stdio for MCP (local) or HTTP (remote).
- * Sprint 2: MCP stdio transport with all 17 verb handlers.
+ * Sprint 4: MCP stdio transport with all 18 verb handlers.
  */
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -36,6 +36,9 @@ import { metaNodeInfoHandler } from "./verbs/convenience/meta-node-info.js";
 import { metaAlgorithmsHandler } from "./verbs/convenience/meta-algorithms.js";
 import { metaHealthHandler } from "./verbs/convenience/meta-health.js";
 
+// Convenience verbs — intervene.*
+import { interveneDoHandler } from "./verbs/convenience/intervene-do.js";
+
 const ALL_HANDLERS = [
   metaCapabilitiesHandler,
   graphNeighborsHandler,
@@ -54,6 +57,7 @@ const ALL_HANDLERS = [
   metaNodeInfoHandler,
   metaAlgorithmsHandler,
   metaHealthHandler,
+  interveneDoHandler,
 ];
 
 async function main() {
@@ -76,9 +80,40 @@ async function main() {
       `[abel-cap] MCP stdio transport running. ${ALL_HANDLERS.length} tools registered.`
     );
   } else {
-    // Sprint 3: HTTP transport
-    console.error("[abel-cap] HTTP transport — not yet implemented. Use --stdio.");
-    process.exit(1);
+    // HTTP transport — §8.1 CAP HTTP Binding
+    const { createHttpApp } = await import("./transport/http-binding.js");
+    const { serveA2ARoute } = await import("./transport/a2a-card.js");
+
+    // Create bound dispatcher (client + config curried)
+    const boundDispatcher = (verb: string, params: Record<string, unknown>) =>
+      dispatcher(verb, params, client, config);
+
+    const app = createHttpApp(boundDispatcher, config);
+
+    // §8.3 A2A Agent Card
+    serveA2ARoute(app, config);
+
+    const baseUrl = config.publicUrl ?? `http://localhost:${config.port}`;
+    const server = app.listen(config.port, () => {
+      console.error(
+        `[abel-cap] CAP HTTP server listening on port ${config.port}. ${ALL_HANDLERS.length} verbs registered.`
+      );
+      console.error(`[abel-cap] Capability Card: ${baseUrl}/.well-known/cap.json`);
+      console.error(`[abel-cap] A2A Agent Card: ${baseUrl}/.well-known/agent-card.json`);
+    });
+
+    // Graceful shutdown — drain in-flight requests on SIGTERM
+    const shutdown = () => {
+      console.error("[abel-cap] Received shutdown signal, draining connections...");
+      server.close(() => {
+        console.error("[abel-cap] Server closed gracefully.");
+        process.exit(0);
+      });
+      // Force exit after 10s if connections don't drain
+      setTimeout(() => process.exit(1), 10_000).unref();
+    };
+    process.on("SIGTERM", shutdown);
+    process.on("SIGINT", shutdown);
   }
 }
 

@@ -1,5 +1,5 @@
 /**
- * MCP Binding — registers all 17 CAP verb handlers as MCP tools.
+ * MCP Binding — registers all 18 CAP verb handlers as MCP tools.
  *
  * §8.2 NORMATIVE: Every tool description includes CAP verb name AND conformance level.
  * §6.3: traverse.path alias for graph.paths is explicitly registered.
@@ -14,6 +14,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { AbelClient } from "../abel-client/client.js";
 import type { Config } from "../config.js";
 import type { Dispatcher, VerbResult } from "../verbs/handler.js";
+import { obfuscateResponse } from "../security/obfuscation.js";
+import { getResponseDetail } from "../security/tiers.js";
+import type { AccessTier } from "../security/tiers.js";
 
 // ── §8.2 Tool definitions ──────────────────────────────────────────────────
 
@@ -144,6 +147,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     description:
       "[L1] CAP verb: meta.health — Returns the health status of the Abel causal engine and its graph data freshness.",
   },
+  {
+    name: "cap_intervene_do",
+    verb: "intervene.do",
+    level: "L2",
+    description:
+      "[L2] CAP verb: intervene.do — Simulates Pearl's do-operator: fix nodes to specified values and observe causal effects on targets. Returns per-effect reasoning_mode and result-level identification_status.",
+  },
 ];
 
 // ── Explicit verb lookup table (§8.2 — no naive string manipulation) ───────
@@ -177,7 +187,7 @@ function toMcpResult(verbResult: VerbResult): {
 }
 
 /**
- * Creates an McpServer with all 17 CAP verb handlers registered as MCP tools.
+ * Creates an McpServer with all 18 CAP verb handlers registered as MCP tools.
  *
  * Tools that take no arguments (meta.capabilities, meta.algorithms,
  * meta.health, traverse.latest_values) are registered without an input schema.
@@ -192,6 +202,16 @@ export function createMcpServer(
     name: "Abel CAP Server",
     version: "0.1.0",
   });
+
+  const detail = getResponseDetail(config.accessTier as AccessTier);
+
+  /** Apply obfuscation then convert to MCP result format. */
+  function toMcpResultObfuscated(verbResult: VerbResult): {
+    content: [{ type: "text"; text: string }];
+  } {
+    const obfuscatedResult = obfuscateResponse(verbResult.result, detail);
+    return toMcpResult({ ...verbResult, result: obfuscatedResult });
+  }
 
   // ── Zero-argument tools ────────────────────────────────────────────────
 
@@ -208,7 +228,7 @@ export function createMcpServer(
       const description = toolDef.description;
       server.tool(toolDef.name, description, async () => {
         const result = await dispatcher(verb, {}, client, config);
-        return toMcpResult(result);
+        return toMcpResultObfuscated(result);
       });
     }
   }
@@ -221,7 +241,7 @@ export function createMcpServer(
     TOOL_DEFINITIONS.find((t) => t.name === "cap_meta_graph_info")!.description,
     async () => {
       const result = await dispatcher("meta.graph_info", {}, client, config);
-      return toMcpResult(result);
+      return toMcpResultObfuscated(result);
     }
   );
 
@@ -251,7 +271,7 @@ export function createMcpServer(
         client,
         config
       );
-      return toMcpResult(result);
+      return toMcpResultObfuscated(result);
     }
   );
 
@@ -275,7 +295,7 @@ export function createMcpServer(
         client,
         config
       );
-      return toMcpResult(result);
+      return toMcpResultObfuscated(result);
     }
   );
 
@@ -296,10 +316,19 @@ export function createMcpServer(
         })
         .optional()
         .describe("Intervention specification (required for interventional queries)"),
+      top_k_causes: z
+        .number()
+        .int()
+        .optional()
+        .describe("Number of top causal features to return (0 = all)"),
       include_provenance: z
         .boolean()
         .optional()
         .describe("Include provenance metadata in response (default: true)"),
+      include_paths: z
+        .boolean()
+        .optional()
+        .describe("Include causal paths in interventional response (default: false)"),
     },
     async (args) => {
       const result = await dispatcher(
@@ -308,7 +337,7 @@ export function createMcpServer(
         client,
         config
       );
-      return toMcpResult(result);
+      return toMcpResultObfuscated(result);
     }
   );
 
@@ -339,7 +368,7 @@ export function createMcpServer(
         client,
         config
       );
-      return toMcpResult(result);
+      return toMcpResultObfuscated(result);
     }
   );
 
@@ -357,7 +386,7 @@ export function createMcpServer(
         client,
         config
       );
-      return toMcpResult(result);
+      return toMcpResultObfuscated(result);
     }
   );
 
@@ -377,7 +406,7 @@ export function createMcpServer(
         client,
         config
       );
-      return toMcpResult(result);
+      return toMcpResultObfuscated(result);
     }
   );
 
@@ -395,7 +424,7 @@ export function createMcpServer(
         client,
         config
       );
-      return toMcpResult(result);
+      return toMcpResultObfuscated(result);
     }
   );
 
@@ -418,7 +447,7 @@ export function createMcpServer(
         client,
         config
       );
-      return toMcpResult(result);
+      return toMcpResultObfuscated(result);
     }
   );
 
@@ -441,7 +470,7 @@ export function createMcpServer(
         client,
         config
       );
-      return toMcpResult(result);
+      return toMcpResultObfuscated(result);
     }
   );
 
@@ -465,7 +494,7 @@ export function createMcpServer(
         client,
         config
       );
-      return toMcpResult(result);
+      return toMcpResultObfuscated(result);
     }
   );
 
@@ -488,7 +517,7 @@ export function createMcpServer(
         client,
         config
       );
-      return toMcpResult(result);
+      return toMcpResultObfuscated(result);
     }
   );
 
@@ -506,7 +535,27 @@ export function createMcpServer(
         client,
         config
       );
-      return toMcpResult(result);
+      return toMcpResultObfuscated(result);
+    }
+  );
+
+  // cap_intervene_do
+  server.tool(
+    "cap_intervene_do",
+    TOOL_DEFINITIONS.find((t) => t.name === "cap_intervene_do")!.description,
+    {
+      interventions: z.array(z.object({
+        node_id: z.string(),
+        value: z.number(),
+        unit: z.string(),
+      })),
+      targets: z.array(z.string()),
+      horizon: z.string().optional(),
+      include_paths: z.boolean().optional(),
+    },
+    async ({ interventions, targets, horizon, include_paths }) => {
+      const result = await dispatcher("intervene.do", { interventions, targets, horizon, include_paths }, client, config);
+      return toMcpResultObfuscated(result);
     }
   );
 

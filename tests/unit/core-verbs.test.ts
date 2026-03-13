@@ -138,14 +138,24 @@ describe("graph.paths", () => {
     );
   });
 
-  it("returns empty paths for unreachable target", async () => {
-    const result = await graphPathsHandler.handle(
-      { source: "C", target: "A", max_depth: 5 },
-      mockClient,
-      {} as unknown as Config
-    );
-    const paths = result.result["paths"] as Array<unknown>;
-    expect(paths).toHaveLength(0);
+  it("throws path_not_found for unreachable target", async () => {
+    await expect(
+      graphPathsHandler.handle(
+        { source: "C", target: "A", max_depth: 5 },
+        mockClient,
+        {} as unknown as Config
+      )
+    ).rejects.toBeInstanceOf(CAPError);
+
+    try {
+      await graphPathsHandler.handle(
+        { source: "C", target: "A", max_depth: 5 },
+        mockClient,
+        {} as unknown as Config
+      );
+    } catch (err) {
+      expect((err as CAPError).code).toBe("path_not_found");
+    }
   });
 });
 
@@ -184,24 +194,6 @@ describe("effect.query", () => {
     expect(estimate["probability_positive"]).toBe(0.72);
   });
 
-  it("rejects interventional with query_type_not_supported", async () => {
-    // CAPError sets message to the human-readable string, not the code.
-    // Check .code property instead of message string.
-    await expect(
-      effectQueryHandler.handle(
-        {
-          target: "BTC",
-          query_type: "interventional",
-          intervention: { node_id: "ETH", value: 0.05, unit: "log_return" },
-        },
-        mockClient,
-        {} as unknown as Config
-      )
-    ).rejects.toSatisfy(
-      (err: unknown) => err instanceof CAPError && err.code === "query_type_not_supported"
-    );
-  });
-
   it("includes provenance by default (§6.4: include_provenance defaults true)", async () => {
     const result = await effectQueryHandler.handle(
       { target: "BTC", query_type: "observational" },
@@ -211,5 +203,75 @@ describe("effect.query", () => {
     expect(result.provenance).toBeDefined();
     expect(result.provenance?.graphVersion).toBe("dynamic");
     expect(result.provenance?.mechanismFamilyUsed).toBe("linear");
+  });
+});
+
+describe("effect.query — interventional", () => {
+  const mockInterveneClient = {
+    intervene: vi.fn().mockResolvedValue({
+      interventions: [{ ticker: "ETH", value: 0.05, unit: "log_return" }],
+      effects: [
+        {
+          target: "BTC",
+          expected_change: 0.018,
+          unit: "log_return",
+          confidence_interval: [0.005, 0.031] as [number, number],
+          probability_positive: 0.68,
+          propagation_delay_hours: 2,
+          mechanism_coverage_complete: true,
+          causal_path: [{ from: "ETH", to: "BTC", weight: 0.35, tau: 2 }],
+        },
+      ],
+    }),
+  } as unknown as AbelClient;
+
+  it("dispatches interventional query to client.intervene", async () => {
+    const result = await effectQueryHandler.handle(
+      {
+        target: "BTC",
+        query_type: "interventional",
+        intervention: { node_id: "ETH", value: 0.05, unit: "log_return" },
+      },
+      mockInterveneClient,
+      {} as unknown as Config
+    );
+    expect(result.result["query_type"]).toBe("interventional");
+    const estimate = result.result["estimate"] as Record<string, unknown>;
+    expect(estimate["value"]).toBe(0.018);
+    expect(estimate["probability_positive"]).toBe(0.68);
+    expect(estimate["horizon"]).toBe("PT2H");
+  });
+
+  it("returns invalid_intervention when intervention.node_id is missing", async () => {
+    await expect(
+      effectQueryHandler.handle(
+        {
+          target: "BTC",
+          query_type: "interventional",
+          // intervention param omitted entirely
+        },
+        mockInterveneClient,
+        {} as unknown as Config
+      )
+    ).rejects.toSatisfy(
+      (err: unknown) => err instanceof CAPError && err.code === "invalid_intervention"
+    );
+  });
+
+  it("includes reasoning_mode + identification_status + assumptions in result (§10.2)", async () => {
+    const result = await effectQueryHandler.handle(
+      {
+        target: "BTC",
+        query_type: "interventional",
+        intervention: { node_id: "ETH", value: 0.05, unit: "log_return" },
+      },
+      mockInterveneClient,
+      {} as unknown as Config
+    );
+    // mechanism_coverage_complete=true → scm_simulation
+    expect(result.result["reasoning_mode"]).toBe("scm_simulation");
+    expect(result.result["identification_status"]).toBe("not_formally_identified");
+    expect(Array.isArray(result.result["assumptions"])).toBe(true);
+    expect((result.result["assumptions"] as unknown[]).length).toBeGreaterThan(0);
   });
 });

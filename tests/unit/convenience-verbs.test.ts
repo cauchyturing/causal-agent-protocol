@@ -13,6 +13,8 @@ import { traverseParentsHandler } from "../../src/verbs/convenience/traverse-par
 import { traverseChildrenHandler } from "../../src/verbs/convenience/traverse-children.js";
 import { traverseSubgraphHandler } from "../../src/verbs/convenience/traverse-subgraph.js";
 import { traverseLatestHandler } from "../../src/verbs/convenience/traverse-latest.js";
+import { interveneDoHandler } from "../../src/verbs/convenience/intervene-do.js";
+import { CAPError } from "../../src/cap/errors.js";
 
 const mockPrediction = {
   ticker: "BTC",
@@ -289,5 +291,200 @@ describe("traverse.latest_values", () => {
     const nodes = result.result["nodes"] as Record<string, unknown>[];
     expect(nodes[0]["node_id"]).toBe("BTC");
     expect(nodes[0]["latest_value"]).toBe(67000);
+  });
+});
+
+// ── intervene.do ──────────────────────────────────────────────────────────────
+
+const mockInterveneClient = {
+  intervene: vi.fn().mockResolvedValue({
+    interventions: [{ ticker: "BTC", value: 0.05, unit: "log_return" }],
+    effects: [
+      {
+        target: "ETH",
+        expected_change: 0.02,
+        unit: "log_return",
+        probability_positive: 0.75,
+        propagation_delay_hours: 2,
+        mechanism_coverage_complete: true,
+        causal_path: [{ from: "BTC", to: "ETH", weight: 0.35, tau: 2 }],
+      },
+      {
+        target: "SOL",
+        expected_change: 0.01,
+        unit: "log_return",
+        probability_positive: 0.6,
+        propagation_delay_hours: 4,
+        mechanism_coverage_complete: false,
+      },
+    ],
+  }),
+  getFeatures: vi.fn(),
+  getChildren: vi.fn(),
+  getPrediction: vi.fn(),
+  getHealth: vi.fn(),
+} as unknown as AbelClient;
+
+const interveneParams = {
+  interventions: [{ node_id: "BTC", value: 0.05, unit: "log_return" }],
+  targets: ["ETH", "SOL"],
+};
+
+describe("intervene.do", () => {
+  it("returns effects with per-effect reasoning_mode", async () => {
+    const result = await interveneDoHandler.handle(
+      interveneParams,
+      mockInterveneClient,
+      {} as unknown as Config
+    );
+    const effects = result.result["effects"] as Record<string, unknown>[];
+    expect(effects).toHaveLength(2);
+    for (const effect of effects) {
+      expect(effect["reasoning_mode"]).toBeDefined();
+      expect(effect["mechanism_coverage_complete"]).toBeDefined();
+    }
+  });
+
+  it("full mechanism coverage → scm_simulation + mechanism_coverage_complete=true", async () => {
+    const result = await interveneDoHandler.handle(
+      interveneParams,
+      mockInterveneClient,
+      {} as unknown as Config
+    );
+    const effects = result.result["effects"] as Record<string, unknown>[];
+    const eth = effects.find((e) => e["target"] === "ETH")!;
+    expect(eth["reasoning_mode"]).toBe("scm_simulation");
+    expect(eth["mechanism_coverage_complete"]).toBe(true);
+  });
+
+  it("partial coverage → graph_propagation + mechanism_coverage_complete=false", async () => {
+    const result = await interveneDoHandler.handle(
+      interveneParams,
+      mockInterveneClient,
+      {} as unknown as Config
+    );
+    const effects = result.result["effects"] as Record<string, unknown>[];
+    const sol = effects.find((e) => e["target"] === "SOL")!;
+    expect(sol["reasoning_mode"]).toBe("graph_propagation");
+    expect(sol["mechanism_coverage_complete"]).toBe(false);
+  });
+
+  it("mixed targets: one full coverage, one partial — different reasoning_modes", async () => {
+    const result = await interveneDoHandler.handle(
+      interveneParams,
+      mockInterveneClient,
+      {} as unknown as Config
+    );
+    const effects = result.result["effects"] as Record<string, unknown>[];
+    const eth = effects.find((e) => e["target"] === "ETH")!;
+    const sol = effects.find((e) => e["target"] === "SOL")!;
+    expect(eth["reasoning_mode"]).not.toBe(sol["reasoning_mode"]);
+  });
+
+  it("result includes identification_status + assumptions", async () => {
+    const result = await interveneDoHandler.handle(
+      interveneParams,
+      mockInterveneClient,
+      {} as unknown as Config
+    );
+    expect(result.result["identification_status"]).toBe("not_formally_identified");
+    const assumptions = result.result["assumptions"] as string[];
+    expect(Array.isArray(assumptions)).toBe(true);
+    expect(assumptions.length).toBeGreaterThan(0);
+  });
+
+  it("missing interventions → invalid_intervention CAPError", async () => {
+    await expect(
+      interveneDoHandler.handle(
+        { interventions: [], targets: ["ETH"] },
+        mockInterveneClient,
+        {} as unknown as Config
+      )
+    ).rejects.toBeInstanceOf(CAPError);
+
+    try {
+      await interveneDoHandler.handle(
+        { interventions: [], targets: ["ETH"] },
+        mockInterveneClient,
+        {} as unknown as Config
+      );
+    } catch (err) {
+      expect((err as CAPError).code).toBe("invalid_intervention");
+    }
+  });
+
+  it("missing targets → invalid_intervention CAPError", async () => {
+    await expect(
+      interveneDoHandler.handle(
+        { interventions: [{ node_id: "BTC", value: 0.05, unit: "log_return" }], targets: [] },
+        mockInterveneClient,
+        {} as unknown as Config
+      )
+    ).rejects.toBeInstanceOf(CAPError);
+
+    try {
+      await interveneDoHandler.handle(
+        { interventions: [{ node_id: "BTC", value: 0.05, unit: "log_return" }], targets: [] },
+        mockInterveneClient,
+        {} as unknown as Config
+      );
+    } catch (err) {
+      expect((err as CAPError).code).toBe("invalid_intervention");
+    }
+  });
+
+  it("include_paths=false strips causal_path from effects", async () => {
+    const result = await interveneDoHandler.handle(
+      { ...interveneParams, include_paths: false },
+      mockInterveneClient,
+      {} as unknown as Config
+    );
+    const effects = result.result["effects"] as Record<string, unknown>[];
+    for (const effect of effects) {
+      expect(effect["causal_path"]).toBeUndefined();
+    }
+  });
+
+  it("include_paths=true preserves causal_path when present", async () => {
+    const result = await interveneDoHandler.handle(
+      { ...interveneParams, include_paths: true },
+      mockInterveneClient,
+      {} as unknown as Config
+    );
+    const effects = result.result["effects"] as Record<string, unknown>[];
+    const eth = effects.find((e) => e["target"] === "ETH")!;
+    expect(Array.isArray(eth["causal_path"])).toBe(true);
+  });
+
+  it("echoes interventions in result", async () => {
+    const result = await interveneDoHandler.handle(
+      interveneParams,
+      mockInterveneClient,
+      {} as unknown as Config
+    );
+    const echoed = result.result["interventions"] as Record<string, unknown>[];
+    expect(echoed).toHaveLength(1);
+    expect(echoed[0]["node_id"]).toBe("BTC");
+  });
+
+  it("maps node_id to ticker when calling Abel client", async () => {
+    const clientSpy = {
+      ...mockInterveneClient,
+      intervene: vi.fn().mockResolvedValue({
+        interventions: [{ ticker: "BTC", value: 0.05, unit: "log_return" }],
+        effects: [],
+      }),
+    } as unknown as AbelClient;
+
+    await interveneDoHandler.handle(
+      interveneParams,
+      clientSpy,
+      {} as unknown as Config
+    );
+
+    const callArg = (clientSpy.intervene as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+      interventions: Array<{ ticker: string }>;
+    };
+    expect(callArg.interventions[0]["ticker"]).toBe("BTC");
   });
 });

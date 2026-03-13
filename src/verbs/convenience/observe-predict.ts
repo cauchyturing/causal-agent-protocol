@@ -11,7 +11,8 @@ export const observePredictHandler: VerbHandler = {
     const target = params["target"] as string;
     const topK = (params["top_k_causes"] as number) || 3;
     const featureSelection = (params["feature_selection"] as string) || "impact";
-    const includeProvenance = params["include_provenance"] === true;
+    // §6.7: include_provenance defaults to TRUE per spec
+    const includeProvenance = params["include_provenance"] !== false;
 
     const startMs = Date.now();
     const pred = await withErrorMapping(() => client.getPrediction(target));

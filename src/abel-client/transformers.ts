@@ -6,8 +6,8 @@
  */
 
 import type { CausalFeature } from "../utils/schemas.js";
-import { tauToISO } from "../utils/duration.js";
-import type { AbelFeature, AbelChild } from "./types.js";
+import { tauToISO, hoursToISO } from "../utils/duration.js";
+import type { AbelFeature, AbelChild, AbelInterveneEffect } from "./types.js";
 
 /** Transform Abel feature → CAP CausalFeature */
 export function transformFeatureToCausal(f: AbelFeature): CausalFeature {
@@ -81,4 +81,60 @@ function inferDomain(nodeType: string): string {
     volatility_index: "finance",
   };
   return typeMap[nodeType] ?? "finance";
+}
+
+/** CAP §6.6 effect shape (shape-only, no semantic injection — that's the handler's job) */
+export interface TransformedInterveneEffect {
+  target: string;
+  expected_change: number;
+  unit: string;
+  confidence_interval?: [number, number];
+  interval_method?: string;
+  probability_positive: number;
+  propagation_delay: string;
+  mechanism_coverage_complete: boolean;
+  causal_path?: Array<{
+    from: string;
+    to: string;
+    edge_type: string;
+    weight: number;
+    tau: number;
+  }>;
+}
+
+/**
+ * Transform AbelInterveneEffect → CAP §6.6 effect shape.
+ *
+ * Shape conversions performed here (layer: abel-client → pure transform, no semantics):
+ *   - propagation_delay_hours (number) → propagation_delay (ISO 8601, e.g. "PT2H")
+ *   - causal_path edges: inject edge_type: "directed_lagged"
+ *   - confidence_interval present → add interval_method: "bootstrap"
+ *
+ * NOT done here (handler's responsibility):
+ *   - reasoning_mode injection (requires getEffectSemantics from verbs/_shared — layer violation)
+ */
+export function transformInterveneEffect(
+  effect: AbelInterveneEffect
+): TransformedInterveneEffect {
+  return {
+    target: effect.target,
+    expected_change: effect.expected_change,
+    unit: effect.unit,
+    ...(effect.confidence_interval !== undefined && {
+      confidence_interval: effect.confidence_interval,
+      interval_method: "bootstrap",
+    }),
+    probability_positive: effect.probability_positive,
+    propagation_delay: hoursToISO(effect.propagation_delay_hours),
+    mechanism_coverage_complete: effect.mechanism_coverage_complete,
+    ...(effect.causal_path !== undefined && {
+      causal_path: effect.causal_path.map((edge) => ({
+        from: edge.from,
+        to: edge.to,
+        edge_type: "directed_lagged",
+        weight: edge.weight,
+        tau: edge.tau,
+      })),
+    }),
+  };
 }

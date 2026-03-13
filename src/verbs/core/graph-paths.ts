@@ -1,4 +1,5 @@
 import type { VerbHandler } from "../handler.js";
+import { CAPError } from "../../cap/errors.js";
 import { tauToISO } from "../../utils/duration.js";
 import { withErrorMapping } from "../_shared/error-mapping.js";
 
@@ -69,6 +70,12 @@ export const graphPathsHandler: VerbHandler = {
           visitedInPath: newVisited,
         });
       }
+    }
+
+    if (paths.length === 0) {
+      throw new CAPError("path_not_found", {
+        suggestion: `No causal path exists from '${source}' to '${target}' within depth ${maxDepth}`,
+      });
     }
 
     return {

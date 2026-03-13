@@ -13,8 +13,8 @@ import {
 describe("getToolDefinitions()", () => {
   const tools = getToolDefinitions();
 
-  it("returns exactly 17 tool definitions", () => {
-    expect(tools).toHaveLength(17);
+  it("returns exactly 18 tool definitions", () => {
+    expect(tools).toHaveLength(18);
   });
 
   it("all tool names use cap_ prefix", () => {
@@ -43,6 +43,7 @@ describe("getToolDefinitions()", () => {
       "cap_meta_node_info",
       "cap_meta_algorithms",
       "cap_meta_health",
+      "cap_intervene_do",
     ];
     for (const name of expected) {
       expect(names).toContain(name);
@@ -80,7 +81,7 @@ describe("getToolDefinitions()", () => {
   });
 
   it("all other tools have L1 level", () => {
-    const l2tools = new Set(["cap_graph_paths", "cap_traverse_path"]);
+    const l2tools = new Set(["cap_graph_paths", "cap_traverse_path", "cap_intervene_do"]);
     for (const tool of tools) {
       if (!l2tools.has(tool.name)) {
         expect(tool.level).toBe("L1");
@@ -117,7 +118,7 @@ describe("TOOL_NAME_TO_VERB", () => {
     expect(TOOL_NAME_TO_VERB["cap_traverse_path"]).toBe("traverse.path");
   });
 
-  it("has an entry for all 17 tools", () => {
+  it("has an entry for all 18 tools", () => {
     const names = getToolDefinitions().map((t) => t.name);
     for (const name of names) {
       expect(TOOL_NAME_TO_VERB[name]).toBeDefined();
