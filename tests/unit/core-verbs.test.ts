@@ -33,20 +33,19 @@ describe("meta.capabilities", () => {
 });
 
 describe("graph.neighbors", () => {
+  const getFeaturesMock = vi.fn().mockResolvedValue({
+    ticker: "BTC",
+    features: [
+      { feature_name: "ETH", feature_type: "asset_price", weight: 0.35, tau: 2 },
+      { feature_name: "SPX", feature_type: "macro_indicator", weight: 0.15, tau: 1 },
+    ],
+    intercept: 0.001,
+  });
   const mockClient = {
-    getFeatures: vi.fn().mockResolvedValue({
-      ticker: "BTC",
-      features: [
-        { feature_name: "ETH", feature_type: "asset_price", weight: 0.35, tau: 2 },
-        { feature_name: "SPX", feature_type: "macro_indicator", weight: 0.15, tau: 1 },
-      ],
-      intercept: 0.001,
-    }),
+    getFeatures: getFeaturesMock,
     getChildren: vi.fn().mockResolvedValue({
       ticker: "BTC",
-      children: [
-        { child_name: "LINK", child_type: "asset_price", weight: 0.2, tau: 3 },
-      ],
+      children: [{ child_name: "LINK", child_type: "asset_price", weight: 0.2, tau: 3 }],
     }),
   } as unknown as AbelClient;
 
@@ -56,11 +55,11 @@ describe("graph.neighbors", () => {
       mockClient,
       {} as unknown as Config
     );
-    const neighbors = result.result["neighbors"] as any[];
+    const neighbors = result.result["neighbors"] as Array<Record<string, unknown>>;
     expect(neighbors).toHaveLength(2);
     expect(neighbors[0]["node_id"]).toBe("ETH");
     expect(neighbors[0]["tau_duration"]).toBe("PT2H");
-    expect((mockClient as any).getFeatures).toHaveBeenCalledWith("BTC");
+    expect(getFeaturesMock).toHaveBeenCalledWith("BTC");
   });
 
   it("returns children when direction=children", async () => {
@@ -69,7 +68,7 @@ describe("graph.neighbors", () => {
       mockClient,
       {} as unknown as Config
     );
-    const neighbors = result.result["neighbors"] as any[];
+    const neighbors = result.result["neighbors"] as Array<Record<string, unknown>>;
     expect(neighbors).toHaveLength(1);
     expect(neighbors[0]["node_id"]).toBe("LINK");
   });
@@ -80,7 +79,7 @@ describe("graph.neighbors", () => {
       mockClient,
       {} as unknown as Config
     );
-    const neighbors = result.result["neighbors"] as any[];
+    const neighbors = result.result["neighbors"] as Array<Record<string, unknown>>;
     expect(neighbors).toHaveLength(3);
   });
 
@@ -90,7 +89,7 @@ describe("graph.neighbors", () => {
       mockClient,
       {} as unknown as Config
     );
-    const neighbors = result.result["neighbors"] as any[];
+    const neighbors = result.result["neighbors"] as Array<Record<string, unknown>>;
     expect(neighbors).toHaveLength(1);
   });
 
@@ -106,24 +105,30 @@ describe("graph.neighbors", () => {
 
 describe("graph.paths", () => {
   // A→B→C graph
+  type AbelChildEntry = {
+    child_name: string;
+    child_type: string;
+    weight: number;
+    tau: number;
+  };
   const mockClient = {
     getChildren: vi.fn().mockImplementation(async (ticker: string) => {
-      const graph: Record<string, any[]> = {
+      const graph: Record<string, AbelChildEntry[]> = {
         A: [{ child_name: "B", child_type: "asset_price", weight: 0.5, tau: 1 }],
         B: [{ child_name: "C", child_type: "asset_price", weight: 0.3, tau: 2 }],
         C: [],
       };
       return { ticker, children: graph[ticker] ?? [] };
     }),
-  } as any;
+  } as unknown as AbelClient;
 
   it("finds path from A to C", async () => {
     const result = await graphPathsHandler.handle(
       { source: "A", target: "C", max_depth: 5 },
       mockClient,
-      {} as any
+      {} as unknown as Config
     );
-    const paths = result.result["paths"] as any[];
+    const paths = result.result["paths"] as Array<Array<Record<string, unknown>>>;
     expect(paths.length).toBeGreaterThan(0);
     expect(paths[0]).toEqual(
       expect.arrayContaining([
@@ -137,9 +142,9 @@ describe("graph.paths", () => {
     const result = await graphPathsHandler.handle(
       { source: "C", target: "A", max_depth: 5 },
       mockClient,
-      {} as any
+      {} as unknown as Config
     );
-    const paths = result.result["paths"] as any[];
+    const paths = result.result["paths"] as Array<unknown>;
     expect(paths).toHaveLength(0);
   });
 });
@@ -152,20 +157,26 @@ describe("effect.query", () => {
       probability_positive: 0.72,
       confidence_interval: [0.005, 0.041],
       features: [
-        { feature_name: "ETH", feature_type: "asset_price", weight: 0.35, tau: 2, impact: 0.012 },
+        {
+          feature_name: "ETH",
+          feature_type: "asset_price",
+          weight: 0.35,
+          tau: 2,
+          impact: 0.012,
+        },
       ],
       intercept: 0.001,
       latest_value: 67000,
       latest_change_percent: 1.2,
       timestamp: "2026-03-12T00:00:00Z",
     }),
-  } as any;
+  } as unknown as AbelClient;
 
   it("returns observational prediction", async () => {
     const result = await effectQueryHandler.handle(
       { target: "BTC", query_type: "observational" },
       mockClient,
-      {} as any
+      {} as unknown as Config
     );
     expect(result.result["query_type"]).toBe("observational");
     const estimate = result.result["estimate"] as Record<string, unknown>;
@@ -178,18 +189,24 @@ describe("effect.query", () => {
     // Check .code property instead of message string.
     await expect(
       effectQueryHandler.handle(
-        { target: "BTC", query_type: "interventional", intervention: { node_id: "ETH", value: 0.05, unit: "log_return" } },
+        {
+          target: "BTC",
+          query_type: "interventional",
+          intervention: { node_id: "ETH", value: 0.05, unit: "log_return" },
+        },
         mockClient,
-        {} as any
+        {} as unknown as Config
       )
-    ).rejects.toSatisfy((err: unknown) => err instanceof CAPError && err.code === "query_type_not_supported");
+    ).rejects.toSatisfy(
+      (err: unknown) => err instanceof CAPError && err.code === "query_type_not_supported"
+    );
   });
 
   it("includes provenance by default (§6.4: include_provenance defaults true)", async () => {
     const result = await effectQueryHandler.handle(
       { target: "BTC", query_type: "observational" },
       mockClient,
-      {} as any
+      {} as unknown as Config
     );
     expect(result.provenance).toBeDefined();
     expect(result.provenance?.graphVersion).toBe("dynamic");

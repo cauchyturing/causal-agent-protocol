@@ -20,10 +20,16 @@ export const graphPathsHandler: VerbHandler = {
 
     const paths: Edge[][] = [];
     // Cache children responses to avoid redundant API calls
-    const childrenCache = new Map<string, Awaited<ReturnType<typeof client.getChildren>>>();
-    const queue: Array<{ node: string; path: Edge[]; depth: number; visitedInPath: Set<string> }> = [
-      { node: source, path: [], depth: 0, visitedInPath: new Set([source]) },
-    ];
+    const childrenCache = new Map<
+      string,
+      Awaited<ReturnType<typeof client.getChildren>>
+    >();
+    const queue: Array<{
+      node: string;
+      path: Edge[];
+      depth: number;
+      visitedInPath: Set<string>;
+    }> = [{ node: source, path: [], depth: 0, visitedInPath: new Set([source]) }];
 
     while (queue.length > 0 && paths.length < 10) {
       const current = queue.shift()!;
@@ -35,7 +41,10 @@ export const graphPathsHandler: VerbHandler = {
 
       // Use per-path visited set (not global) to allow multiple paths through shared nodes
       if (!childrenCache.has(current.node)) {
-        childrenCache.set(current.node, await withErrorMapping(() => client.getChildren(current.node)));
+        childrenCache.set(
+          current.node,
+          await withErrorMapping(() => client.getChildren(current.node))
+        );
       }
       const childResp = childrenCache.get(current.node)!;
 
