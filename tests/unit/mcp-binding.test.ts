@@ -1,7 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import type { AbelClient } from "../../src/abel-client/client.js";
-import type { Config } from "../../src/config.js";
-import type { Dispatcher } from "../../src/verbs/handler.js";
+import type { BoundDispatcher } from "../../src/transport/shared-types.js";
 import {
   getToolDefinitions,
   TOOL_NAME_TO_VERB,
@@ -13,8 +11,8 @@ import {
 describe("getToolDefinitions()", () => {
   const tools = getToolDefinitions();
 
-  it("returns exactly 18 tool definitions", () => {
-    expect(tools).toHaveLength(18);
+  it("returns exactly 20 tool definitions (all L1+L2 verbs)", () => {
+    expect(tools).toHaveLength(20);
   });
 
   it("all tool names use cap_ prefix", () => {
@@ -44,6 +42,8 @@ describe("getToolDefinitions()", () => {
       "cap_meta_algorithms",
       "cap_meta_health",
       "cap_intervene_do",
+      "cap_intervene_ate",
+      "cap_intervene_sensitivity",
     ];
     for (const name of expected) {
       expect(names).toContain(name);
@@ -81,7 +81,10 @@ describe("getToolDefinitions()", () => {
   });
 
   it("all other tools have L1 level", () => {
-    const l2tools = new Set(["cap_graph_paths", "cap_traverse_path", "cap_intervene_do"]);
+    const l2tools = new Set([
+      "cap_graph_paths", "cap_traverse_path",
+      "cap_intervene_do", "cap_intervene_ate", "cap_intervene_sensitivity",
+    ]);
     for (const tool of tools) {
       if (!l2tools.has(tool.name)) {
         expect(tool.level).toBe("L1");
@@ -96,9 +99,6 @@ describe("TOOL_NAME_TO_VERB", () => {
   it("correctly maps cap_observe_predict_multistep → observe.predict_multistep (NOT observe.predict.multistep)", () => {
     expect(TOOL_NAME_TO_VERB["cap_observe_predict_multistep"]).toBe(
       "observe.predict_multistep"
-    );
-    expect(TOOL_NAME_TO_VERB["cap_observe_predict_multistep"]).not.toBe(
-      "observe.predict.multistep"
     );
   });
 
@@ -118,7 +118,7 @@ describe("TOOL_NAME_TO_VERB", () => {
     expect(TOOL_NAME_TO_VERB["cap_traverse_path"]).toBe("traverse.path");
   });
 
-  it("has an entry for all 18 tools", () => {
+  it("has an entry for all 20 tools", () => {
     const names = getToolDefinitions().map((t) => t.name);
     for (const name of names) {
       expect(TOOL_NAME_TO_VERB[name]).toBeDefined();
@@ -129,30 +129,13 @@ describe("TOOL_NAME_TO_VERB", () => {
 // ── createMcpServer() ──────────────────────────────────────────────────────
 
 describe("createMcpServer()", () => {
-  const mockDispatcher: Dispatcher = vi.fn().mockResolvedValue({
+  const mockDispatcher: BoundDispatcher = vi.fn().mockResolvedValue({
     result: { ok: true },
   });
-  const mockClient = {} as unknown as AbelClient;
-  const mockConfig = { maxSubgraphEdges: 50 } as unknown as Config;
 
   it("returns an McpServer instance", async () => {
-    const { McpServer } = await import(
-      "@modelcontextprotocol/sdk/server/mcp.js"
-    );
-    const mcpServer = createMcpServer(mockDispatcher, mockClient, mockConfig);
+    const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
+    const mcpServer = createMcpServer(mockDispatcher);
     expect(mcpServer).toBeInstanceOf(McpServer);
-  });
-
-  it("provenance forwarding: dispatcher is called with correct verb when tool is invoked via createMcpServer", async () => {
-    const dispatcherWithProvenance: Dispatcher = vi.fn().mockResolvedValue({
-      result: { value: 42 },
-      provenance: { graphVersion: "dynamic", mechanismFamilyUsed: "linear" },
-    });
-    // Construct server — this wires all tool callbacks to the dispatcher
-    createMcpServer(dispatcherWithProvenance, mockClient, mockConfig);
-    // Directly verify dispatcher would be passed provenance by testing TOOL_NAME_TO_VERB
-    // maps correctly — the actual provenance forwarding is in toMcpResult (internal).
-    // Here we ensure createMcpServer does not throw during construction.
-    expect(dispatcherWithProvenance).toBeDefined();
   });
 });

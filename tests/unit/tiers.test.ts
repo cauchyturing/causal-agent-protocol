@@ -53,6 +53,14 @@ describe("checkVerbAccess", () => {
     expect(checkVerbAccess("intervene.do", "standard")).toBe(true);
   });
 
+  it("standard tier allows intervene.ate (intervene.* pattern)", () => {
+    expect(checkVerbAccess("intervene.ate", "standard")).toBe(true);
+  });
+
+  it("standard tier allows intervene.sensitivity (intervene.* pattern)", () => {
+    expect(checkVerbAccess("intervene.sensitivity", "standard")).toBe(true);
+  });
+
   it("standard tier allows graph.paths (graph.* pattern)", () => {
     expect(checkVerbAccess("graph.paths", "standard")).toBe(true);
   });

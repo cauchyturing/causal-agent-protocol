@@ -1,9 +1,16 @@
 // src/transport/shared-types.ts
-import type { VerbResult } from "../verbs/handler.js";
 
 /**
- * A dispatcher with client + config already curried.
- * Used by HTTP and MCP transports so they don't need to know about AbelClient.
+ * Result from a CAP verb execution.
+ */
+export interface VerbResult {
+  result: Record<string, unknown>;
+  provenance?: Record<string, unknown>;
+}
+
+/**
+ * A dispatcher with backend details already curried.
+ * Used by MCP and HTTP transports — they don't need to know about the backend.
  */
 export type BoundDispatcher = (
   verb: string,

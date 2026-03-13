@@ -121,7 +121,7 @@ export function buildCapabilityCard(endpoint: string) {
       },
       {
         tier: "standard",
-        verbs: ["observe.*", "traverse.*", "effect.*", "graph.*", "intervene.do", "meta.*"],
+        verbs: ["observe.*", "traverse.*", "effect.*", "graph.*", "intervene.*", "meta.*"],
         response_detail: "full",
         rate_limit: { requests_per_hour: 1000 },
       },

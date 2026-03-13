@@ -1,22 +1,17 @@
 /**
- * MCP Binding — registers all 18 CAP verb handlers as MCP tools.
+ * MCP Binding — registers all L1+L2 CAP verb handlers as MCP tools.
  *
  * §8.2 NORMATIVE: Every tool description includes CAP verb name AND conformance level.
  * §6.3: traverse.path alias for graph.paths is explicitly registered.
  *
- * IMPORTANT: Tool-name → verb mapping uses an explicit lookup table, NOT naive
- * replace(/_/g, "."), because `cap_observe_predict_multistep` would incorrectly
- * become `observe.predict.multistep` with a naive replacement.
+ * This binding is transport-agnostic. It accepts a BoundDispatcher that can be:
+ * - A proxy to a CAP HTTP endpoint (bridge mode)
+ * - A direct verb handler (embedded mode)
  */
 
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { AbelClient } from "../abel-client/client.js";
-import type { Config } from "../config.js";
-import type { Dispatcher, VerbResult } from "../verbs/handler.js";
-import { obfuscateResponse } from "../security/obfuscation.js";
-import { getResponseDetail } from "../security/tiers.js";
-import type { AccessTier } from "../security/tiers.js";
+import type { BoundDispatcher } from "./shared-types.js";
 
 // ── §8.2 Tool definitions ──────────────────────────────────────────────────
 
@@ -154,11 +149,23 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     description:
       "[L2] CAP verb: intervene.do — Simulates Pearl's do-operator: fix nodes to specified values and observe causal effects on targets. Returns per-effect reasoning_mode and result-level identification_status.",
   },
+  {
+    name: "cap_intervene_ate",
+    verb: "intervene.ate",
+    level: "L2",
+    description:
+      "[L2] CAP verb: intervene.ate — Estimates the Average Treatment Effect (ATE) of intervening on a treatment node, comparing treated vs control outcomes on a target.",
+  },
+  {
+    name: "cap_intervene_sensitivity",
+    verb: "intervene.sensitivity",
+    level: "L2",
+    description:
+      "[L2] CAP verb: intervene.sensitivity — Performs sensitivity analysis on a causal effect estimate, testing robustness to assumption violations (e.g., unmeasured confounding).",
+  },
 ];
 
 // ── Explicit verb lookup table (§8.2 — no naive string manipulation) ───────
-// Maps MCP tool name → CAP verb. Required because `cap_observe_predict_multistep`
-// must map to `observe.predict_multistep`, NOT `observe.predict.multistep`.
 
 export const TOOL_NAME_TO_VERB: Record<string, string> = Object.fromEntries(
   TOOL_DEFINITIONS.map((t) => [t.name, t.verb])
@@ -171,79 +178,49 @@ export function getToolDefinitions(): ToolDefinition[] {
 }
 
 /**
- * Serialises a VerbResult to MCP CallToolResult format.
- * §8.2: When VerbResult has `.provenance`, include it in the JSON output.
+ * Serialises a verb result to MCP CallToolResult format.
  */
-function toMcpResult(verbResult: VerbResult): {
+function toMcpResult(result: Record<string, unknown>): {
   content: [{ type: "text"; text: string }];
 } {
-  const output: Record<string, unknown> = { ...verbResult.result };
-  if (verbResult.provenance !== undefined) {
-    output["_provenance"] = verbResult.provenance;
-  }
   return {
-    content: [{ type: "text" as const, text: JSON.stringify(output, null, 2) }],
+    content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
   };
 }
 
 /**
- * Creates an McpServer with all 18 CAP verb handlers registered as MCP tools.
+ * Creates an McpServer with all L1+L2 CAP verb tools registered.
  *
- * Tools that take no arguments (meta.capabilities, meta.algorithms,
- * meta.health, traverse.latest_values) are registered without an input schema.
- * All others receive a Zod raw-shape with their required/optional fields.
+ * The dispatcher handles all backend logic (verb execution, obfuscation, etc.).
+ * This binding is a pure MCP-to-CAP translation layer.
  */
-export function createMcpServer(
-  dispatcher: Dispatcher,
-  client: AbelClient,
-  config: Config
-): McpServer {
+export function createMcpServer(dispatcher: BoundDispatcher): McpServer {
   const server = new McpServer({
     name: "Abel CAP Server",
     version: "0.1.0",
   });
 
-  const detail = getResponseDetail(config.accessTier as AccessTier);
-
-  /** Apply obfuscation then convert to MCP result format. */
-  function toMcpResultObfuscated(verbResult: VerbResult): {
-    content: [{ type: "text"; text: string }];
-  } {
-    const obfuscatedResult = obfuscateResponse(verbResult.result, detail);
-    return toMcpResult({ ...verbResult, result: obfuscatedResult });
-  }
-
   // ── Zero-argument tools ────────────────────────────────────────────────
 
-  const zeroArgTools: string[] = [
+  const zeroArgTools = new Set([
     "cap_meta_capabilities",
     "cap_meta_algorithms",
     "cap_meta_health",
     "cap_traverse_latest_values",
-  ];
+    "cap_meta_graph_info",
+  ]);
 
   for (const toolDef of TOOL_DEFINITIONS) {
-    if (zeroArgTools.includes(toolDef.name)) {
+    if (zeroArgTools.has(toolDef.name)) {
       const verb = toolDef.verb;
-      const description = toolDef.description;
-      server.tool(toolDef.name, description, async () => {
-        const result = await dispatcher(verb, {}, client, config);
-        return toMcpResultObfuscated(result);
+      server.tool(toolDef.name, toolDef.description, async () => {
+        const { result } = await dispatcher(verb, {});
+        return toMcpResult(result);
       });
     }
   }
 
   // ── Tools with input schemas ───────────────────────────────────────────
-
-  // cap_meta_graph_info — zero params (server-level info, no node required)
-  server.tool(
-    "cap_meta_graph_info",
-    TOOL_DEFINITIONS.find((t) => t.name === "cap_meta_graph_info")!.description,
-    async () => {
-      const result = await dispatcher("meta.graph_info", {}, client, config);
-      return toMcpResultObfuscated(result);
-    }
-  );
 
   // cap_graph_neighbors
   server.tool(
@@ -265,13 +242,8 @@ export function createMcpServer(
         .describe("Include current market values in response"),
     },
     async (args) => {
-      const result = await dispatcher(
-        "graph.neighbors",
-        args as Record<string, unknown>,
-        client,
-        config
-      );
-      return toMcpResultObfuscated(result);
+      const { result } = await dispatcher("graph.neighbors", args as Record<string, unknown>);
+      return toMcpResult(result);
     }
   );
 
@@ -282,20 +254,11 @@ export function createMcpServer(
     {
       source: z.string().describe("Starting node (ticker symbol)"),
       target: z.string().describe("Destination node (ticker symbol)"),
-      max_depth: z
-        .number()
-        .int()
-        .optional()
-        .describe("Maximum path depth to search (default: 5)"),
+      max_depth: z.number().int().optional().describe("Maximum path depth to search (default: 5)"),
     },
     async (args) => {
-      const result = await dispatcher(
-        "graph.paths",
-        args as Record<string, unknown>,
-        client,
-        config
-      );
-      return toMcpResultObfuscated(result);
+      const { result } = await dispatcher("graph.paths", args as Record<string, unknown>);
+      return toMcpResult(result);
     }
   );
 
@@ -305,39 +268,18 @@ export function createMcpServer(
     TOOL_DEFINITIONS.find((t) => t.name === "cap_effect_query")!.description,
     {
       target: z.string().describe("Target node to query causal effect for"),
-      query_type: z
-        .enum(["observational", "interventional"])
-        .describe("Type of causal query"),
+      query_type: z.enum(["observational", "interventional"]).describe("Type of causal query"),
       intervention: z
-        .object({
-          node_id: z.string(),
-          value: z.number(),
-          unit: z.string(),
-        })
+        .object({ node_id: z.string(), value: z.number(), unit: z.string() })
         .optional()
         .describe("Intervention specification (required for interventional queries)"),
-      top_k_causes: z
-        .number()
-        .int()
-        .optional()
-        .describe("Number of top causal features to return (0 = all)"),
-      include_provenance: z
-        .boolean()
-        .optional()
-        .describe("Include provenance metadata in response (default: true)"),
-      include_paths: z
-        .boolean()
-        .optional()
-        .describe("Include causal paths in interventional response (default: false)"),
+      top_k_causes: z.number().int().optional().describe("Number of top causal features to return"),
+      include_provenance: z.boolean().optional().describe("Include provenance metadata"),
+      include_paths: z.boolean().optional().describe("Include causal paths in response"),
     },
     async (args) => {
-      const result = await dispatcher(
-        "effect.query",
-        args as Record<string, unknown>,
-        client,
-        config
-      );
-      return toMcpResultObfuscated(result);
+      const { result } = await dispatcher("effect.query", args as Record<string, unknown>);
+      return toMcpResult(result);
     }
   );
 
@@ -347,28 +289,13 @@ export function createMcpServer(
     TOOL_DEFINITIONS.find((t) => t.name === "cap_observe_predict")!.description,
     {
       target: z.string().describe("Target node (ticker symbol) to predict"),
-      top_k_causes: z
-        .number()
-        .int()
-        .optional()
-        .describe("Number of top causal features to include (default: 3)"),
-      feature_selection: z
-        .enum(["impact", "weight", "tau"])
-        .optional()
-        .describe("Sort criterion for causal features (default: impact)"),
-      include_provenance: z
-        .boolean()
-        .optional()
-        .describe("Include provenance metadata in response"),
+      top_k_causes: z.number().int().optional().describe("Number of top causal features (default: 3)"),
+      feature_selection: z.enum(["impact", "weight", "tau"]).optional().describe("Sort criterion"),
+      include_provenance: z.boolean().optional().describe("Include provenance metadata"),
     },
     async (args) => {
-      const result = await dispatcher(
-        "observe.predict",
-        args as Record<string, unknown>,
-        client,
-        config
-      );
-      return toMcpResultObfuscated(result);
+      const { result } = await dispatcher("observe.predict", args as Record<string, unknown>);
+      return toMcpResult(result);
     }
   );
 
@@ -376,17 +303,10 @@ export function createMcpServer(
   server.tool(
     "cap_observe_predict_multistep",
     TOOL_DEFINITIONS.find((t) => t.name === "cap_observe_predict_multistep")!.description,
-    {
-      target: z.string().describe("Target node (ticker symbol) to predict"),
-    },
+    { target: z.string().describe("Target node (ticker symbol) to predict") },
     async (args) => {
-      const result = await dispatcher(
-        "observe.predict_multistep",
-        args as Record<string, unknown>,
-        client,
-        config
-      );
-      return toMcpResultObfuscated(result);
+      const { result } = await dispatcher("observe.predict_multistep", args as Record<string, unknown>);
+      return toMcpResult(result);
     }
   );
 
@@ -394,19 +314,10 @@ export function createMcpServer(
   server.tool(
     "cap_observe_predict_batch",
     TOOL_DEFINITIONS.find((t) => t.name === "cap_observe_predict_batch")!.description,
-    {
-      targets: z
-        .array(z.string())
-        .describe("Array of target node (ticker symbol) identifiers to predict"),
-    },
+    { targets: z.array(z.string()).describe("Array of target node identifiers to predict") },
     async (args) => {
-      const result = await dispatcher(
-        "observe.predict_batch",
-        args as Record<string, unknown>,
-        client,
-        config
-      );
-      return toMcpResultObfuscated(result);
+      const { result } = await dispatcher("observe.predict_batch", args as Record<string, unknown>);
+      return toMcpResult(result);
     }
   );
 
@@ -414,17 +325,10 @@ export function createMcpServer(
   server.tool(
     "cap_observe_attribute",
     TOOL_DEFINITIONS.find((t) => t.name === "cap_observe_attribute")!.description,
-    {
-      target: z.string().describe("Target node (ticker symbol) to attribute"),
-    },
+    { target: z.string().describe("Target node (ticker symbol) to attribute") },
     async (args) => {
-      const result = await dispatcher(
-        "observe.attribute",
-        args as Record<string, unknown>,
-        client,
-        config
-      );
-      return toMcpResultObfuscated(result);
+      const { result } = await dispatcher("observe.attribute", args as Record<string, unknown>);
+      return toMcpResult(result);
     }
   );
 
@@ -434,20 +338,11 @@ export function createMcpServer(
     TOOL_DEFINITIONS.find((t) => t.name === "cap_traverse_parents")!.description,
     {
       node_id: z.string().describe("Node (ticker symbol) to get parents for"),
-      top_k: z
-        .number()
-        .int()
-        .optional()
-        .describe("Limit to top-K parents by weight"),
+      top_k: z.number().int().optional().describe("Limit to top-K parents by weight"),
     },
     async (args) => {
-      const result = await dispatcher(
-        "traverse.parents",
-        args as Record<string, unknown>,
-        client,
-        config
-      );
-      return toMcpResultObfuscated(result);
+      const { result } = await dispatcher("traverse.parents", args as Record<string, unknown>);
+      return toMcpResult(result);
     }
   );
 
@@ -457,44 +352,26 @@ export function createMcpServer(
     TOOL_DEFINITIONS.find((t) => t.name === "cap_traverse_children")!.description,
     {
       node_id: z.string().describe("Node (ticker symbol) to get children for"),
-      top_k: z
-        .number()
-        .int()
-        .optional()
-        .describe("Limit to top-K children by weight"),
+      top_k: z.number().int().optional().describe("Limit to top-K children by weight"),
     },
     async (args) => {
-      const result = await dispatcher(
-        "traverse.children",
-        args as Record<string, unknown>,
-        client,
-        config
-      );
-      return toMcpResultObfuscated(result);
+      const { result } = await dispatcher("traverse.children", args as Record<string, unknown>);
+      return toMcpResult(result);
     }
   );
 
-  // cap_traverse_path (§6.3 alias for graph.paths)
+  // cap_traverse_path (§6.3 alias)
   server.tool(
     "cap_traverse_path",
     TOOL_DEFINITIONS.find((t) => t.name === "cap_traverse_path")!.description,
     {
       source: z.string().describe("Starting node (ticker symbol)"),
       target: z.string().describe("Destination node (ticker symbol)"),
-      max_depth: z
-        .number()
-        .int()
-        .optional()
-        .describe("Maximum path depth to search (default: 5)"),
+      max_depth: z.number().int().optional().describe("Maximum path depth (default: 5)"),
     },
     async (args) => {
-      const result = await dispatcher(
-        "traverse.path",
-        args as Record<string, unknown>,
-        client,
-        config
-      );
-      return toMcpResultObfuscated(result);
+      const { result } = await dispatcher("traverse.path", args as Record<string, unknown>);
+      return toMcpResult(result);
     }
   );
 
@@ -504,20 +381,11 @@ export function createMcpServer(
     TOOL_DEFINITIONS.find((t) => t.name === "cap_traverse_subgraph")!.description,
     {
       node_id: z.string().describe("Center node (ticker symbol) of the subgraph"),
-      depth: z
-        .number()
-        .int()
-        .optional()
-        .describe("Expansion depth (max 3, default: 1)"),
+      depth: z.number().int().optional().describe("Expansion depth (max 3, default: 1)"),
     },
     async (args) => {
-      const result = await dispatcher(
-        "traverse.subgraph",
-        args as Record<string, unknown>,
-        client,
-        config
-      );
-      return toMcpResultObfuscated(result);
+      const { result } = await dispatcher("traverse.subgraph", args as Record<string, unknown>);
+      return toMcpResult(result);
     }
   );
 
@@ -525,17 +393,10 @@ export function createMcpServer(
   server.tool(
     "cap_meta_node_info",
     TOOL_DEFINITIONS.find((t) => t.name === "cap_meta_node_info")!.description,
-    {
-      node_id: z.string().describe("Node (ticker symbol) to get info for"),
-    },
+    { node_id: z.string().describe("Node (ticker symbol) to get info for") },
     async (args) => {
-      const result = await dispatcher(
-        "meta.node_info",
-        args as Record<string, unknown>,
-        client,
-        config
-      );
-      return toMcpResultObfuscated(result);
+      const { result } = await dispatcher("meta.node_info", args as Record<string, unknown>);
+      return toMcpResult(result);
     }
   );
 
@@ -554,8 +415,42 @@ export function createMcpServer(
       include_paths: z.boolean().optional(),
     },
     async ({ interventions, targets, horizon, include_paths }) => {
-      const result = await dispatcher("intervene.do", { interventions, targets, horizon, include_paths }, client, config);
-      return toMcpResultObfuscated(result);
+      const { result } = await dispatcher("intervene.do", { interventions, targets, horizon, include_paths });
+      return toMcpResult(result);
+    }
+  );
+
+  // cap_intervene_ate
+  server.tool(
+    "cap_intervene_ate",
+    TOOL_DEFINITIONS.find((t) => t.name === "cap_intervene_ate")!.description,
+    {
+      treatment: z.string().describe("Treatment node (ticker symbol)"),
+      target: z.string().describe("Outcome node (ticker symbol)"),
+      treatment_value: z.number().describe("Intervention value for treatment node"),
+      control_value: z.number().describe("Control (baseline) value for treatment node"),
+      unit: z.string().describe("Unit of the treatment values"),
+      horizon: z.string().optional().describe("Prediction horizon (ISO 8601 duration)"),
+    },
+    async (args) => {
+      const { result } = await dispatcher("intervene.ate", args as Record<string, unknown>);
+      return toMcpResult(result);
+    }
+  );
+
+  // cap_intervene_sensitivity
+  server.tool(
+    "cap_intervene_sensitivity",
+    TOOL_DEFINITIONS.find((t) => t.name === "cap_intervene_sensitivity")!.description,
+    {
+      treatment: z.string().describe("Treatment node (ticker symbol)"),
+      target: z.string().describe("Outcome node (ticker symbol)"),
+      method: z.enum(["rosenbaum_bounds", "e_value", "omitted_variable_bias"]).optional()
+        .describe("Sensitivity analysis method (default: e_value)"),
+    },
+    async (args) => {
+      const { result } = await dispatcher("intervene.sensitivity", args as Record<string, unknown>);
+      return toMcpResult(result);
     }
   );
 

@@ -11,7 +11,7 @@ export type AccessTier = "public" | "standard" | "enterprise";
 // Verb patterns per tier — mirrors capability-card.ts access_tiers
 const TIER_VERBS: Record<AccessTier, string[]> = {
   public: ["observe.predict", "traverse.parents", "meta.*"],
-  standard: ["observe.*", "traverse.*", "effect.*", "graph.*", "intervene.do", "meta.*"],
+  standard: ["observe.*", "traverse.*", "effect.*", "graph.*", "intervene.*", "meta.*"],
   enterprise: ["*"],
 };
 

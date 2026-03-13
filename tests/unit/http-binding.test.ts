@@ -11,8 +11,8 @@ const mockDispatcher: BoundDispatcher = vi.fn().mockResolvedValue({
 
 const mockConfig = {
   port: 3001,
-  abelApiBase: "https://abel.ai",
-  abelApiKey: "",
+  capEndpoint: "https://cap.abel.ai",
+  capApiKey: "",
   accessTier: "standard",
   rateLimitPublic: 100,
   rateLimitStandard: 1000,

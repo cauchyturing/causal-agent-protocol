@@ -6,15 +6,13 @@
 import { describe, it, expect, vi } from "vitest";
 import express from "express";
 import request from "supertest";
-import type { AbelClient } from "../../src/abel-client/client.js";
-import type { Config } from "../../src/config.js";
-import type { Dispatcher } from "../../src/verbs/handler.js";
+import type { BoundDispatcher } from "../../src/transport/shared-types.js";
 import { mountMcpHttp } from "../../src/transport/mcp-http-transport.js";
 
 const MCP_ACCEPT = "application/json, text/event-stream";
 
 // Mock dispatcher that returns verb-specific responses
-const mockDispatcher: Dispatcher = vi.fn().mockImplementation(
+const mockDispatcher: BoundDispatcher = vi.fn().mockImplementation(
   async (verb: string) => {
     if (verb === "meta.health") {
       return {
@@ -37,18 +35,10 @@ const mockDispatcher: Dispatcher = vi.fn().mockImplementation(
   }
 );
 
-const mockClient = {} as unknown as AbelClient;
-const mockConfig = {
-  port: 3001,
-  accessTier: "standard",
-  maxSubgraphEdges: 50,
-  publicUrl: "https://abel.ai",
-} as unknown as Config;
-
 function createTestApp() {
   const app = express();
   app.use(express.json());
-  mountMcpHttp(app, mockDispatcher, mockClient, mockConfig);
+  mountMcpHttp(app, mockDispatcher);
   return app;
 }
 
@@ -125,7 +115,7 @@ describe("MCP Streamable HTTP — Integration", () => {
   });
 
   describe("Tool discovery", () => {
-    it("tools/list returns all 18 CAP verb tools", async () => {
+    it("tools/list returns all 20 CAP verb tools", async () => {
       const app = createTestApp();
       const sessionId = await initializeSession(app);
 
@@ -141,7 +131,7 @@ describe("MCP Streamable HTTP — Integration", () => {
       const body = parseSseBody(res);
       const result = body["result"] as Record<string, unknown>;
       const tools = result["tools"] as Array<{ name: string }>;
-      expect(tools).toHaveLength(18);
+      expect(tools).toHaveLength(20);
 
       // Verify all tool names start with cap_
       for (const tool of tools) {

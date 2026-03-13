@@ -7,9 +7,7 @@ import { randomUUID } from "node:crypto";
 import type { Express, Request, Response } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
-import type { AbelClient } from "../abel-client/client.js";
-import type { Config } from "../config.js";
-import type { Dispatcher } from "../verbs/handler.js";
+import type { BoundDispatcher } from "./shared-types.js";
 import { createMcpServer } from "./mcp-binding.js";
 
 /**
@@ -20,12 +18,11 @@ import { createMcpServer } from "./mcp-binding.js";
  */
 export function mountMcpHttp(
   app: Express,
-  dispatcher: Dispatcher,
-  client: AbelClient,
-  config: Config
+  dispatcher: BoundDispatcher
 ): void {
   /** Active session transports keyed by session ID (scoped to this mount). */
   const sessions = new Map<string, StreamableHTTPServerTransport>();
+
   // POST /mcp — JSON-RPC requests (initialize, tools/list, tools/call, etc.)
   app.post("/mcp", async (req: Request, res: Response) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
@@ -51,8 +48,8 @@ export function mountMcpHttp(
         if (id) sessions.delete(id);
       };
 
-      // Create a fresh McpServer for this session with all 18 CAP tools
-      const mcpServer = createMcpServer(dispatcher, client, config);
+      // Create a fresh McpServer for this session with all CAP tools
+      const mcpServer = createMcpServer(dispatcher);
       await mcpServer.connect(transport);
       await transport.handleRequest(req, res, req.body);
       return;

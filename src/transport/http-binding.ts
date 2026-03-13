@@ -7,8 +7,7 @@
 import { timingSafeEqual } from "node:crypto";
 import express from "express";
 import type { Request, Response } from "express";
-import type { BoundDispatcher } from "./shared-types.js";
-import type { VerbResult } from "../verbs/handler.js";
+import type { BoundDispatcher, VerbResult } from "./shared-types.js";
 import type { Config } from "../config.js";
 import {
   RequestEnvelopeSchema,
@@ -16,7 +15,6 @@ import {
   buildErrorResponse,
 } from "../cap/envelope.js";
 import { buildCapabilityCard } from "../cap/capability-card.js";
-import { buildProvenance } from "../cap/provenance.js";
 import { CAPError } from "../cap/errors.js";
 import { checkVerbAccess, getResponseDetail } from "../security/tiers.js";
 import type { AccessTier } from "../security/tiers.js";
@@ -59,8 +57,8 @@ function resolveTier(req: Request, config: Config): AccessTier {
   const key = extractApiKey(req);
   if (!key) return "public";
   // Validate key against configured API key (timing-safe comparison)
-  if (config.abelApiKey) {
-    const expected = Buffer.from(config.abelApiKey);
+  if (config.capApiKey) {
+    const expected = Buffer.from(config.capApiKey);
     const provided = Buffer.from(key);
     if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) {
       return "public"; // invalid key treated as unauthenticated
@@ -172,12 +170,8 @@ export function createHttpApp(
       // Obfuscate response based on detail level
       const obfuscated = obfuscateResponse(verbResult.result, detail);
 
-      // Build provenance if handler returned it
-      const provenance = verbResult.provenance
-        ? (buildProvenance(
-            verbResult.provenance
-          ) as unknown as Record<string, unknown>)
-        : undefined;
+      // Pass through provenance from backend (bridge mode — already formatted)
+      const provenance = verbResult.provenance;
 
       const response = buildSuccessResponse(
         envelope.request_id,

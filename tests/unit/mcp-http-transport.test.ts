@@ -5,27 +5,19 @@
 import { describe, it, expect, vi } from "vitest";
 import express from "express";
 import request from "supertest";
-import type { AbelClient } from "../../src/abel-client/client.js";
-import type { Config } from "../../src/config.js";
-import type { Dispatcher } from "../../src/verbs/handler.js";
+import type { BoundDispatcher } from "../../src/transport/shared-types.js";
 import { mountMcpHttp } from "../../src/transport/mcp-http-transport.js";
 
 const MCP_ACCEPT = "application/json, text/event-stream";
 
-const mockDispatcher: Dispatcher = vi.fn().mockResolvedValue({
+const mockDispatcher: BoundDispatcher = vi.fn().mockResolvedValue({
   result: { status: "healthy" },
 });
-const mockClient = {} as unknown as AbelClient;
-const mockConfig = {
-  port: 3001,
-  accessTier: "standard",
-  maxSubgraphEdges: 50,
-} as unknown as Config;
 
 function createTestApp() {
   const app = express();
   app.use(express.json());
-  mountMcpHttp(app, mockDispatcher, mockClient, mockConfig);
+  mountMcpHttp(app, mockDispatcher);
   return app;
 }
 
@@ -148,8 +140,8 @@ describe("mountMcpHttp — session lifecycle", () => {
     expect(result["tools"]).toBeDefined();
     const tools = result["tools"] as Array<unknown>;
     expect(Array.isArray(tools)).toBe(true);
-    // All 18 CAP verb tools should be registered
-    expect(tools.length).toBe(18);
+    // All 20 CAP verb tools should be registered (L1 + L2, excluding L3 reserved)
+    expect(tools.length).toBe(20);
   });
 
   it("multiple independent sessions do not interfere", async () => {

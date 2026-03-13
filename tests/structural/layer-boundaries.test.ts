@@ -6,10 +6,8 @@
  *
  *   src/cap/          → (no internal deps, only zod)
  *   src/utils/        → (no internal deps)
- *   src/abel-client/  → src/cap/ (types only)
- *   src/verbs/        → src/cap/ + src/abel-client/
- *   src/transport/    → src/cap/ + src/verbs/
  *   src/security/     → src/cap/
+ *   src/transport/    → src/cap/ + src/security/ + src/utils/ + shared-types
  *
  * Violations here mean the architecture is drifting.
  */
@@ -87,23 +85,6 @@ describe("Layer Boundaries", () => {
     }
   });
 
-  it("src/abel-client/ only imports from cap/ and utils/", () => {
-    const allowed = new Set(["abel-client", "cap", "utils"]);
-    const files = getFilesRecursive(path.join(SRC_ROOT, "abel-client"));
-    for (const file of files) {
-      const imports = getImports(file);
-      for (const imp of imports) {
-        const mod = resolveRelativeImport(file, imp);
-        if (mod && !allowed.has(mod)) {
-          throw new Error(
-            `LAYER VIOLATION: ${path.relative(SRC_ROOT, file)} imports from ${mod}/. ` +
-              `src/abel-client/ may only import from cap/ and utils/.`
-          );
-        }
-      }
-    }
-  });
-
   it("src/security/ only imports from cap/ and utils/", () => {
     const allowed = new Set(["security", "cap", "utils"]);
     const files = getFilesRecursive(path.join(SRC_ROOT, "security"));
@@ -114,7 +95,24 @@ describe("Layer Boundaries", () => {
         if (mod && !allowed.has(mod)) {
           throw new Error(
             `LAYER VIOLATION: ${path.relative(SRC_ROOT, file)} imports from ${mod}/. ` +
-              `src/security/ may only import from cap/.`
+              `src/security/ may only import from cap/ and utils/.`
+          );
+        }
+      }
+    }
+  });
+
+  it("src/transport/ only imports from cap/, security/, utils/, and transport/", () => {
+    const allowed = new Set(["transport", "cap", "security", "utils", "config.js"]);
+    const files = getFilesRecursive(path.join(SRC_ROOT, "transport"));
+    for (const file of files) {
+      const imports = getImports(file);
+      for (const imp of imports) {
+        const mod = resolveRelativeImport(file, imp);
+        if (mod && !allowed.has(mod)) {
+          throw new Error(
+            `LAYER VIOLATION: ${path.relative(SRC_ROOT, file)} imports from ${mod}/. ` +
+              `src/transport/ may only import from cap/, security/, utils/, and config.`
           );
         }
       }

@@ -1,121 +1,86 @@
 /**
- * Abel CAP Server — Entrypoint
+ * CAP MCP Bridge — Entrypoint
  *
- * Dual transport: --stdio for MCP (local) or HTTP (remote).
- * Sprint 4: MCP stdio transport with all 18 verb handlers.
+ * Exposes any CAP v0.2.2 HTTP endpoint as MCP tools.
+ * Dual transport: --stdio for local MCP or HTTP for remote MCP + CAP HTTP binding.
  */
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig } from "./config.js";
-import { AbelClient } from "./abel-client/client.js";
-import { createDispatcher } from "./verbs/handler.js";
-import { createMcpServer } from "./transport/mcp-binding.js";
+import { createMcpServer, getToolDefinitions } from "./transport/mcp-binding.js";
+import type { BoundDispatcher } from "./transport/shared-types.js";
 
-// Core verbs
-import { metaCapabilitiesHandler } from "./verbs/core/meta-capabilities.js";
-import { graphNeighborsHandler } from "./verbs/core/graph-neighbors.js";
-import { graphPathsHandler } from "./verbs/core/graph-paths.js";
-import { effectQueryHandler } from "./verbs/core/effect-query.js";
+/**
+ * Create a BoundDispatcher that proxies to a CAP HTTP endpoint.
+ * Translates MCP tool calls → CAP HTTP POST /v1/{category}/{name}.
+ */
+function createCapProxy(capEndpoint: string, apiKey?: string): BoundDispatcher {
+  return async (verb: string, params: Record<string, unknown>) => {
+    const [category, name] = verb.split(".");
+    const url = `${capEndpoint}/v1/${category}/${name}`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (apiKey) {
+      headers["X-CAP-Key"] = apiKey;
+    }
 
-// Convenience verbs — observe.*
-import { observePredictHandler } from "./verbs/convenience/observe-predict.js";
-import { observePredictMultiHandler } from "./verbs/convenience/observe-predict-multi.js";
-import { observePredictBatchHandler } from "./verbs/convenience/observe-predict-batch.js";
-import { observeAttributeHandler } from "./verbs/convenience/observe-attribute.js";
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        cap_version: "0.2",
+        request_id: crypto.randomUUID(),
+        verb,
+        params,
+      }),
+    });
 
-// Convenience verbs — traverse.*
-import { traverseParentsHandler } from "./verbs/convenience/traverse-parents.js";
-import { traverseChildrenHandler } from "./verbs/convenience/traverse-children.js";
-import { traversePathHandler } from "./verbs/convenience/traverse-path.js";
-import { traverseSubgraphHandler } from "./verbs/convenience/traverse-subgraph.js";
-import { traverseLatestHandler } from "./verbs/convenience/traverse-latest.js";
+    const envelope = (await response.json()) as Record<string, unknown>;
 
-// Convenience verbs — meta.*
-import { metaGraphInfoHandler } from "./verbs/convenience/meta-graph-info.js";
-import { metaNodeInfoHandler } from "./verbs/convenience/meta-node-info.js";
-import { metaAlgorithmsHandler } from "./verbs/convenience/meta-algorithms.js";
-import { metaHealthHandler } from "./verbs/convenience/meta-health.js";
+    if (envelope["status"] === "error") {
+      const error = envelope["error"] as Record<string, unknown>;
+      throw new Error(`CAP error [${error["code"]}]: ${error["message"]}`);
+    }
 
-// Convenience verbs — intervene.*
-import { interveneDoHandler } from "./verbs/convenience/intervene-do.js";
-
-const ALL_HANDLERS = [
-  metaCapabilitiesHandler,
-  graphNeighborsHandler,
-  graphPathsHandler,
-  effectQueryHandler,
-  observePredictHandler,
-  observePredictMultiHandler,
-  observePredictBatchHandler,
-  observeAttributeHandler,
-  traverseParentsHandler,
-  traverseChildrenHandler,
-  traversePathHandler,
-  traverseSubgraphHandler,
-  traverseLatestHandler,
-  metaGraphInfoHandler,
-  metaNodeInfoHandler,
-  metaAlgorithmsHandler,
-  metaHealthHandler,
-  interveneDoHandler,
-];
+    return {
+      result: (envelope["result"] as Record<string, unknown>) ?? {},
+      provenance: envelope["provenance"] as Record<string, unknown> | undefined,
+    };
+  };
+}
 
 async function main() {
   const config = loadConfig();
-
-  const client = new AbelClient({
-    baseUrl: config.abelApiBase,
-    apiKey: config.abelApiKey,
-  });
-
-  const dispatcher = createDispatcher(ALL_HANDLERS);
+  const dispatcher = createCapProxy(config.capEndpoint, config.capApiKey);
 
   const mode = process.argv.includes("--stdio") ? "stdio" : "http";
 
   if (mode === "stdio") {
-    const mcpServer = createMcpServer(dispatcher, client, config);
+    const mcpServer = createMcpServer(dispatcher);
     const transport = new StdioServerTransport();
     await mcpServer.connect(transport);
-    console.error(
-      `[abel-cap] MCP stdio transport running. ${ALL_HANDLERS.length} tools registered.`
-    );
+    console.error(`[cap-bridge] MCP stdio transport running. ${getToolDefinitions().length} tools registered.`);
+    console.error(`[cap-bridge] Proxying to CAP endpoint: ${config.capEndpoint}`);
   } else {
-    // HTTP transport — §8.1 CAP HTTP Binding
     const { createHttpApp } = await import("./transport/http-binding.js");
     const { serveA2ARoute } = await import("./transport/a2a-card.js");
-
-    // Create bound dispatcher (client + config curried)
-    const boundDispatcher = (verb: string, params: Record<string, unknown>) =>
-      dispatcher(verb, params, client, config);
-
     const { mountMcpHttp } = await import("./transport/mcp-http-transport.js");
 
-    const app = createHttpApp(boundDispatcher, config);
-
-    // §8.3 A2A Agent Card
+    const app = createHttpApp(dispatcher, config);
     serveA2ARoute(app, config);
-
-    // MCP Streamable HTTP at /mcp (same Express app, same port)
-    mountMcpHttp(app, dispatcher, client, config);
+    mountMcpHttp(app, dispatcher);
 
     const baseUrl = config.publicUrl ?? `http://localhost:${config.port}`;
     const server = app.listen(config.port, () => {
-      console.error(
-        `[abel-cap] CAP HTTP server listening on port ${config.port}. ${ALL_HANDLERS.length} verbs registered.`
-      );
-      console.error(`[abel-cap] Capability Card: ${baseUrl}/.well-known/cap.json`);
-      console.error(`[abel-cap] A2A Agent Card: ${baseUrl}/.well-known/agent-card.json`);
-      console.error(`[abel-cap] MCP Streamable HTTP: ${baseUrl}/mcp`);
+      console.error(`[cap-bridge] HTTP server on port ${config.port}. Proxying to: ${config.capEndpoint}`);
+      console.error(`[cap-bridge] Capability Card: ${baseUrl}/.well-known/cap.json`);
+      console.error(`[cap-bridge] MCP Streamable HTTP: ${baseUrl}/mcp`);
     });
 
-    // Graceful shutdown — drain in-flight requests on SIGTERM
     const shutdown = () => {
-      console.error("[abel-cap] Received shutdown signal, draining connections...");
-      server.close(() => {
-        console.error("[abel-cap] Server closed gracefully.");
-        process.exit(0);
-      });
-      // Force exit after 10s if connections don't drain
+      console.error("[cap-bridge] Draining connections...");
+      server.close(() => process.exit(0));
       setTimeout(() => process.exit(1), 10_000).unref();
     };
     process.on("SIGTERM", shutdown);
@@ -124,6 +89,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("[abel-cap] Fatal:", err);
+  console.error("[cap-bridge] Fatal:", err);
   process.exit(1);
 });

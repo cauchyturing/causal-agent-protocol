@@ -104,7 +104,7 @@ export const VERB_REGISTRY: Record<string, VerbDefinition> = {
     name: "traverse.path",
     category: "traverse",
     tier: "convenience",
-    minLevel: 1,
+    minLevel: 2, // §6.3 alias for graph.paths (L2 core verb)
     requiresReasoningMode: false,
     requiresAssumptions: false,
   },
@@ -147,6 +147,26 @@ export const VERB_REGISTRY: Record<string, VerbDefinition> = {
     category: "intervene",
     tier: "convenience",
     minLevel: 2,
+    requiresReasoningMode: true,
+    requiresAssumptions: true,
+  },
+
+  // ── Core: Counterfact (L3 reserved) ──────────────────
+  "counterfact.query": {
+    name: "counterfact.query",
+    category: "counterfact",
+    tier: "core",
+    minLevel: 3,
+    requiresReasoningMode: true,
+    requiresAssumptions: true,
+  },
+
+  // ── Convenience: Counterfact (L3 reserved) ──────────
+  "counterfact.contrast": {
+    name: "counterfact.contrast",
+    category: "counterfact",
+    tier: "convenience",
+    minLevel: 3,
     requiresReasoningMode: true,
     requiresAssumptions: true,
   },
